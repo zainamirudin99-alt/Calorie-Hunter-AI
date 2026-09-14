@@ -6,6 +6,7 @@ import Link from "next/link";
 import { TacticalHeader } from "@/components/hud/header";
 import { TacticalFooter } from "@/components/hud/footer";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
+import { CampaignStepper } from "@/components/hud/campaign-stepper";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { 
   ScanLine, 
@@ -94,6 +95,7 @@ export default function ScannerPage() {
   return (
     <div className="min-h-screen flex flex-col justify-between">
       <TacticalHeader activeTab="scanner" />
+      <CampaignStepper />
       <TelemetryTicker />
 
       <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6">
@@ -372,7 +374,7 @@ export default function ScannerPage() {
                     href="/"
                     className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase flex items-center gap-1.5"
                   >
-                    <span>LIHAT PADA DASHBOARD</span>
+                    <span>LANJUT KE STEP 7: BUKA DASHBOARD HUD</span>
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>

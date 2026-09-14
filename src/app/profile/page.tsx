@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { TacticalHeader } from "@/components/hud/header";
 import { TacticalFooter } from "@/components/hud/footer";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
+import { CampaignStepper } from "@/components/hud/campaign-stepper";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { calculateTDEE, PAL_MULTIPLIERS } from "@/lib/tdee/calculator";
 import { ActivityLevel, Gender } from "@/types/database";
@@ -73,10 +74,10 @@ export default function ProfilePage() {
         throw new Error(data.error || "Gagal menyimpan profil");
       }
 
-      setFeedback({ type: "success", msg: "Data profil berhasil disinkronkan ke Core Engine!" });
+      setFeedback({ type: "success", msg: "Data profil berhasil disimpan! Lanjut ke Step 3: Aktivitas Mingguan..." });
       setTimeout(() => {
-        router.push("/program");
-      }, 1200);
+        router.push("/activities");
+      }, 1000);
     } catch (err: any) {
       // In local preview without live Supabase session, save to localStorage fallback so user is never blocked
       localStorage.setItem("chai_user_profile", JSON.stringify({
@@ -91,12 +92,12 @@ export default function ProfilePage() {
 
       setFeedback({
         type: "success",
-        msg: "Data profil disimpan secara lokal (Tactical Offline Mode). Siap untuk pemilihan program!",
+        msg: "Data profil disimpan secara lokal. Lanjut ke Step 3: Aktivitas Mingguan...",
       });
 
       setTimeout(() => {
-        router.push("/program");
-      }, 1200);
+        router.push("/activities");
+      }, 1000);
     } finally {
       setLoading(false);
     }
@@ -105,6 +106,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen flex flex-col justify-between">
       <TacticalHeader activeTab="profile" />
+      <CampaignStepper />
       <TelemetryTicker />
 
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-6">
@@ -269,7 +271,7 @@ export default function ProfilePage() {
                   <span>MENYIMPAN BIOMETRIK...</span>
                 ) : (
                   <>
-                    <span>SIMPAN & LANJUT PILIH PROGRAM</span>
+                    <span>SIMPAN & LANJUT KE STEP 3: AKTIVITAS MINGGUAN</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}

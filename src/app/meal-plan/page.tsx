@@ -5,6 +5,7 @@ import Link from "next/link";
 import { TacticalHeader } from "@/components/hud/header";
 import { TacticalFooter } from "@/components/hud/footer";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
+import { CampaignStepper } from "@/components/hud/campaign-stepper";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { MealPlanJson, MealPlanDay } from "@/types/database";
 import { 
@@ -73,6 +74,7 @@ export default function MealPlanPage() {
   return (
     <div className="min-h-screen flex flex-col justify-between">
       <TacticalHeader activeTab="meal-plan" />
+      <CampaignStepper />
       <TelemetryTicker />
 
       <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6">
@@ -237,7 +239,7 @@ export default function MealPlanPage() {
             href="/scanner"
             className="hud-clip-chamfer hud-hero-bg px-5 py-2.5 text-xs font-bold uppercase transition-all flex items-center gap-2 shrink-0 hover:opacity-90"
           >
-            <span>BUKA SCANNER FOTO / TEKS</span>
+            <span>LANJUT KE STEP 6: AI TRACKING SCANNER</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>

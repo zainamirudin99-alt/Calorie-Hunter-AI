@@ -5,6 +5,7 @@ import Link from "next/link";
 import { TacticalHeader } from "@/components/hud/header";
 import { TacticalFooter } from "@/components/hud/footer";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
+import { CampaignStepper } from "@/components/hud/campaign-stepper";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { WeeklyActivity, ActivityIntensity } from "@/types/database";
 import { 
@@ -139,6 +140,7 @@ export default function ActivitiesPage() {
   return (
     <div className="min-h-screen flex flex-col justify-between">
       <TacticalHeader activeTab="activities" />
+      <CampaignStepper />
       <TelemetryTicker />
 
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-6">
@@ -328,7 +330,7 @@ export default function ActivitiesPage() {
             href="/program"
             className="hud-clip-chamfer hud-hero-bg px-4 py-2 text-xs font-bold uppercase transition-all flex items-center gap-1.5 shrink-0 hover:opacity-90"
           >
-            <span>LANJUT KE PILIH PROGRAM</span>
+            <span>LANJUT KE STEP 4: PILIH PROGRAM</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
