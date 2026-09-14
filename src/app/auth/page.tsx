@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { TacticalHeader } from "@/components/hud/header";
 import { TacticalFooter } from "@/components/hud/footer";
-import { CampaignStepper } from "@/components/hud/campaign-stepper";
 import { Shield, Swords, Lock, User, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
 
 export default function AuthPage() {
@@ -76,7 +75,6 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex flex-col justify-between">
       <TacticalHeader />
-      <CampaignStepper />
 
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
         <div className="w-full max-w-md hud-card border rounded p-6 sm:p-8 relative shadow-2xl theme-transition overflow-hidden">

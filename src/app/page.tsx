@@ -9,7 +9,6 @@ import { TacticalSidebar } from "@/components/hud/sidebar";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
 import { TacticalFooter } from "@/components/hud/footer";
 import { LockoutGate } from "@/components/hud/lockout-gate";
-import { CampaignStepper } from "@/components/hud/campaign-stepper";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { DailyCalorieChart, WeightTrendChart, MacroDistributionChart } from "@/components/hud/charts";
 import { 
@@ -96,48 +95,31 @@ export default function DashboardPage() {
       {/* HUD Header with custom logo.png & sidebar trigger */}
       <TacticalHeader activeTab="dashboard" onOpenSidebar={() => setSidebarOpen(true)} />
 
-      {/* Campaign Stepper (Sequential Stages 01 to 07) */}
-      <CampaignStepper />
-
       {/* Live Telemetry Ticker */}
       <TelemetryTicker />
 
       {/* Main HUD Viewport: Responsive 3-Column Command Center */}
       <main className="flex-1 w-full max-w-[1920px] mx-auto p-4 md:p-6 space-y-6">
         
-        {/* GUIDED SEQUENCE MISSION BANNER */}
-        <div className="hud-card border rounded p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg border-primary/40 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 hud-hero-text" />
-              <span className="font-display text-xs sm:text-sm font-bold hud-hero-text uppercase tracking-wider">
-                ALUR MISI PROTOKOL HUNTER (URUTAN TAHAP 1 s/d 7)
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold">
-                SOURCE OF TRUTH
-              </span>
-            </div>
-            <p className="font-mono text-xs hud-text-muted max-w-3xl leading-relaxed">
-              Untuk mengkalibrasi sistem metabolisme Anda secara akurat, ikuti urutan misi: 
-              <strong className="hud-text"> [01] Registrasi</strong> ➔ 
-              <strong className="hud-text"> [02] Biometrik</strong> ➔ 
-              <strong className="hud-text"> [03] Aktivitas</strong> ➔ 
-              <strong className="hud-text"> [04] Program TDEE</strong> ➔ 
-              <strong className="hud-text"> [05] Meal Plan AI</strong> ➔ 
-              <strong className="hud-text"> [06] Tracking Scanner</strong> ➔ 
-              <strong className="hud-hero-text font-bold"> [07] Dashboard HUD</strong>.
+        {/* Dashboard Progress Title Header */}
+        <div className="hud-card border rounded p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg border-primary/30">
+          <div>
+            <span className="font-display text-base sm:text-lg font-bold hud-hero-text uppercase tracking-wide flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              MENU DASHBOARD & GRAFIK PROGRESS HARIAN
+            </span>
+            <p className="font-mono text-xs hud-text-muted mt-0.5">
+              Pantau kepatuhan defisit/surplus kalori, persebaran makronutrisi, tren berat badan, dan status bio-resonansi familiar Anda.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              href="/auth"
-              className="hud-clip-chamfer hud-hero-bg px-4 py-2 font-mono text-xs font-bold uppercase transition-all flex items-center gap-1.5 shadow hover:opacity-90"
-            >
-              <span>MULAI DARI TAHAP 1: AUTH</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
+          <Link
+            href="/scanner"
+            className="hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 shadow hover:opacity-90 shrink-0 text-black dark:text-black"
+          >
+            <span>BUKA TRACKING MAKANAN</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 items-start">

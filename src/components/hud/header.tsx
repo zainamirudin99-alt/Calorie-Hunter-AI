@@ -80,7 +80,7 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
             }`}
             style={{ borderColor: activeTab === "dashboard" ? "var(--hero-accent)" : undefined }}
           >
-            Dashboard HUD
+            Dashboard Progress
           </Link>
           <Link
             href="/scanner"
@@ -91,7 +91,18 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
             }`}
             style={{ borderColor: activeTab === "scanner" ? "var(--hero-accent)" : undefined }}
           >
-            AI Monster Scanner
+            Tracking Makanan
+          </Link>
+          <Link
+            href="/program"
+            className={`font-mono text-xs uppercase tracking-wider pb-1 transition-colors ${
+              activeTab === "program"
+                ? "border-b-2 hud-hero-text font-bold"
+                : "hud-text-muted hover:hud-text"
+            }`}
+            style={{ borderColor: activeTab === "program" ? "var(--hero-accent)" : undefined }}
+          >
+            Pilih Program
           </Link>
           <Link
             href="/meal-plan"
@@ -102,18 +113,7 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
             }`}
             style={{ borderColor: activeTab === "meal-plan" ? "var(--hero-accent)" : undefined }}
           >
-            Meal Plan Deck
-          </Link>
-          <Link
-            href="/activities"
-            className={`font-mono text-xs uppercase tracking-wider pb-1 transition-colors ${
-              activeTab === "activities"
-                ? "border-b-2 hud-hero-text font-bold"
-                : "hud-text-muted hover:hud-text"
-            }`}
-            style={{ borderColor: activeTab === "activities" ? "var(--hero-accent)" : undefined }}
-          >
-            Tactical Activities
+            Rencana Makan AI
           </Link>
           <Link
             href="/profile"
@@ -124,7 +124,7 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
             }`}
             style={{ borderColor: activeTab === "profile" ? "var(--hero-accent)" : undefined }}
           >
-            Hunter Profile
+            Data Diri & Aktivitas
           </Link>
         </nav>
       </div>

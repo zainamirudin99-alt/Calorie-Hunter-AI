@@ -38,11 +38,11 @@ export function MobileTacticalDock() {
   };
 
   const navItems = [
-    { label: "HUD", href: "/", icon: LayoutDashboard },
-    { label: "Ransum", href: "/meal-plan", icon: UtensilsCrossed },
-    { label: "Scan", href: "/scanner", isAction: true, icon: Camera },
-    { label: "Aktivitas", href: "/activities", icon: Activity },
+    { label: "Dashboard", href: "/", icon: LayoutDashboard },
+    { label: "Tracking", href: "/scanner", icon: UtensilsCrossed },
+    { label: "Scan AI", href: "/scanner", isAction: true, icon: Camera },
     { label: "Program", href: "/program", icon: Target },
+    { label: "Profil", href: "/profile", icon: User },
   ];
 
   return (

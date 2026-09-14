@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { TacticalHeader } from "@/components/hud/header";
 import { TacticalFooter } from "@/components/hud/footer";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
-import { CampaignStepper } from "@/components/hud/campaign-stepper";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { calculateTDEE, PAL_MULTIPLIERS } from "@/lib/tdee/calculator";
 import { ActivityLevel, Gender } from "@/types/database";
@@ -192,7 +191,6 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen flex flex-col justify-between">
       <TacticalHeader activeTab="profile" />
-      <CampaignStepper />
       <TelemetryTicker />
 
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-6">
