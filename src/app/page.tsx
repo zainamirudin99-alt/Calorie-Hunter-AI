@@ -1,11 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { TacticalHeader } from "@/components/hud/header";
+import { TacticalSidebar } from "@/components/hud/sidebar";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
 import { TacticalFooter } from "@/components/hud/footer";
+import { LockoutGate } from "@/components/hud/lockout-gate";
 import { useTacticalTheme } from "@/components/theme-provider";
+import { DailyCalorieChart, WeightTrendChart, MacroDistributionChart } from "@/components/hud/charts";
 import { 
   Swords, 
   Shield, 
@@ -21,16 +25,67 @@ import {
   Droplets, 
   Dumbbell,
   CheckCircle2,
-  Clock
+  Clock,
+  Sparkles,
+  RefreshCw
 } from "lucide-react";
 
 export default function DashboardPage() {
   const { isUltraman } = useTacticalTheme();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [telemetry, setTelemetry] = useState<any | null>(null);
+
+  // Fetch summary
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        const token = localStorage.getItem("chai_auth_token");
+        const res = await fetch("/api/dashboard/summary", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTelemetry(data);
+        }
+      } catch {}
+    };
+    fetchSummary();
+  }, []);
+
+  const dailyHistory = telemetry?.daily_history || [
+    { day: "SEN", calories: 1890, target: 1950 },
+    { day: "SEL", calories: 1940, target: 1950 },
+    { day: "RAB", calories: 1780, target: 1950 },
+    { day: "KAM", calories: 1960, target: 1950 },
+    { day: "JUM", calories: 1820, target: 1950 },
+    { day: "SAB", calories: 2050, target: 1950 },
+    { day: "HARI INI", calories: 1420, target: 1950 },
+  ];
+
+  const weightTrend = telemetry?.weight_trend || [
+    { week: "MG 1", weight: 82.0 },
+    { week: "MG 2", weight: 81.2 },
+    { week: "MG 3", weight: 80.5 },
+    { week: "MG 4", weight: 79.8 },
+    { week: "MG 5", weight: 79.1 },
+    { week: "MG 6", weight: 78.4 },
+  ];
+
+  const targetKcal = telemetry?.daily_target_kcal || 1950;
+  const consumedKcal = telemetry?.today_consumed_kcal || 1420;
+  const remainingKcal = Math.max(0, targetKcal - consumedKcal);
+  const isExpired = telemetry?.program_status?.isExpired || false;
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* HUD Header */}
-      <TacticalHeader activeTab="dashboard" />
+      {/* 6-Month Lockout Gate Interlock */}
+      <LockoutGate isExpired={isExpired} />
+
+      {/* Slide-over Tactical Sidebar with custom sidebar-icon.png */}
+      <TacticalSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      {/* HUD Header with custom logo.png & sidebar trigger */}
+      <TacticalHeader activeTab="dashboard" onOpenSidebar={() => setSidebarOpen(true)} />
 
       {/* Live Telemetry Ticker */}
       <TelemetryTicker />
@@ -45,7 +100,6 @@ export default function DashboardPage() {
           
           {/* CYBER MONSTER COMPANION CARD */}
           <div className="relative hud-card border rounded p-5 overflow-hidden group shadow-lg theme-transition">
-            {/* Reticle Crosshairs corners */}
             <div className="absolute top-2 left-2 text-outline font-mono text-[9px]">[+]</div>
             <div className="absolute top-2 right-2 text-outline font-mono text-[9px]">[+]</div>
             <div className="absolute bottom-2 left-2 text-outline font-mono text-[9px]">[+]</div>
@@ -101,7 +155,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Hunger & Energy Telemetry Gauges */}
+            {/* Hunger & Energy Gauges */}
             <div className="mt-4 space-y-3">
               <div>
                 <div className="flex justify-between items-center font-mono text-xs mb-1">
@@ -123,7 +177,7 @@ export default function DashboardPage() {
                     <Utensils className="w-3.5 h-3.5 hud-beam-text" />
                     BUFFER KEKENYANGAN MAKAN
                   </span>
-                  <span className="hud-beam-text font-bold">1,420 / 1,950 FEED UNITS</span>
+                  <span className="hud-beam-text font-bold">1,420 / {targetKcal} FEED UNITS</span>
                 </div>
                 <div className="w-full h-2 hud-card-high rounded overflow-hidden flex gap-0.5">
                   <div className="h-full w-[72.8%] transition-all" style={{ backgroundColor: "var(--beam-accent)" }}></div>
@@ -140,10 +194,10 @@ export default function DashboardPage() {
                 <Gauge className="w-5 h-5 hud-hero-text" />
                 <h2 className="font-display text-base hud-text font-bold">MESIN KALORI HP</h2>
               </div>
-              <span className="font-mono text-xs hud-text-muted">BATAS HARIAN: 1,950 KCAL</span>
+              <span className="font-mono text-xs hud-text-muted">BATAS: {targetKcal} KCAL</span>
             </div>
 
-            {/* Circular Arc Gauge / Tactical Readout */}
+            {/* Circular Arc Gauge */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 py-2">
               <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
                 <svg className="w-full h-full" viewBox="0 0 100 100">
@@ -171,7 +225,7 @@ export default function DashboardPage() {
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                   <span className="font-mono text-[11px] hud-text-muted uppercase">Terkonsumsi</span>
-                  <span className="font-display text-2xl hud-hero-text font-bold leading-none">1,420</span>
+                  <span className="font-display text-2xl hud-hero-text font-bold leading-none">{consumedKcal}</span>
                   <span className="font-mono text-xs text-outline">KCAL</span>
                 </div>
               </div>
@@ -180,7 +234,7 @@ export default function DashboardPage() {
                 <div className="p-3 hud-card-inner rounded border hud-border">
                   <div className="flex justify-between font-mono text-xs mb-1">
                     <span className="hud-text-muted uppercase">Target Tersisa</span>
-                    <span className="hud-beam-text font-bold">530 KCAL</span>
+                    <span className="hud-beam-text font-bold">{remainingKcal} KCAL</span>
                   </div>
                   <div className="text-xs text-muted-foreground hud-text-muted">
                     Cadangan ransum malam untuk menjamin defisit metabolisme yang aman dan terkontrol.
@@ -188,7 +242,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex items-center justify-between font-mono text-xs px-1">
                   <span className="hud-text-muted">TARGET PEMBAKARAN:</span>
-                  <span className="hud-text font-bold">2,450 KCAL TDEE</span>
+                  <span className="hud-text font-bold font-mono">2,450 KCAL TDEE</span>
                 </div>
               </div>
             </div>
@@ -217,7 +271,6 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-4">
-              {/* Protein */}
               <div>
                 <div className="flex justify-between items-center font-mono text-xs mb-1.5">
                   <span className="hud-beam-text flex items-center gap-1 font-bold">
@@ -231,7 +284,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Carbs */}
               <div>
                 <div className="flex justify-between items-center font-mono text-xs mb-1.5">
                   <span className="hud-sub-text flex items-center gap-1 font-bold">
@@ -245,7 +297,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Fat */}
               <div>
                 <div className="flex justify-between items-center font-mono text-xs mb-1.5">
                   <span className="hud-hero-text flex items-center gap-1 font-bold">
@@ -273,9 +324,9 @@ export default function DashboardPage() {
         {/* ========================================================================= */}
         <section className="col-span-1 md:col-span-2 lg:col-span-4 flex flex-col gap-6">
           
-          {/* KALORI HARIAN VS TARGET RADAR */}
+          {/* RECHARTS: KALORI HARIAN VS TARGET */}
           <div className="hud-card border rounded p-5 relative shadow-lg theme-transition">
-            <div className="flex justify-between items-center mb-4 border-b hud-border pb-2">
+            <div className="flex justify-between items-center mb-3 border-b hud-border pb-2">
               <div>
                 <div className="flex items-center gap-2">
                   <LineChart className="w-5 h-5 hud-hero-text" />
@@ -283,76 +334,29 @@ export default function DashboardPage() {
                 </div>
                 <p className="font-mono text-[11px] hud-text-muted mt-0.5 uppercase">RADAR DEFISIT HISTORIS 7 HARI</p>
               </div>
-              <span className="font-mono text-xs hud-beam-text px-2 py-1 rounded hud-card-inner border hud-border">
-                BATAS: 1,950 kcal
+              <span className="font-mono text-xs hud-beam-text px-2 py-0.5 rounded hud-card-inner border hud-border">
+                BATAS: {targetKcal} kcal
               </span>
             </div>
 
-            {/* 7-Day Bar Chart Tactical Simulation */}
-            <div className="relative h-60 w-full pt-4 pb-2 flex flex-col justify-between">
-              {/* Target threshold line */}
-              <div className="absolute left-0 right-0 top-[28%] border-b border-dashed z-10 flex justify-end" style={{ borderColor: "var(--hero-accent)" }}>
-                <span className="font-mono text-[9px] hud-card px-1 hud-hero-text border hud-border mr-1 -mt-2.5">
-                  BATAS: 1,950
-                </span>
-              </div>
-              <div className="absolute left-0 right-0 top-[65%] border-b hud-border opacity-40"></div>
+            {/* Recharts Bar Chart Visualizer */}
+            <DailyCalorieChart data={dailyHistory} targetKcal={targetKcal} />
 
-              {/* Chart Bars */}
-              <div className="h-44 w-full grid grid-cols-7 gap-1 sm:gap-2 items-end z-0">
-                <div className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="font-mono text-[9px] hud-text-muted">1,890</span>
-                  <div className="w-full hud-card-high rounded-t hover:opacity-80 transition-colors h-[72%]"></div>
-                  <span className="font-mono text-[10px] hud-text-muted">SEN</span>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="font-mono text-[9px] hud-text-muted">1,940</span>
-                  <div className="w-full hud-card-high rounded-t hover:opacity-80 transition-colors h-[75%]"></div>
-                  <span className="font-mono text-[10px] hud-text-muted">SEL</span>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="font-mono text-[9px] hud-text-muted">1,780</span>
-                  <div className="w-full hud-card-high rounded-t hover:opacity-80 transition-colors h-[68%]"></div>
-                  <span className="font-mono text-[10px] hud-text-muted">RAB</span>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="font-mono text-[9px] hud-text-muted">1,960</span>
-                  <div className="w-full hud-card-high rounded-t hover:opacity-80 transition-colors h-[77%]"></div>
-                  <span className="font-mono text-[10px] hud-text-muted">KAM</span>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="font-mono text-[9px] hud-text-muted">1,820</span>
-                  <div className="w-full hud-card-high rounded-t hover:opacity-80 transition-colors h-[70%]"></div>
-                  <span className="font-mono text-[10px] hud-text-muted">JUM</span>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="font-mono text-[9px] text-red-500 font-bold">2,050</span>
-                  <div className="w-full bg-red-600/70 border border-red-500 rounded-t h-[82%]"></div>
-                  <span className="font-mono text-[10px] text-red-500 font-bold">SAB</span>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="font-mono text-[9px] hud-hero-text font-bold">1,420</span>
-                  <div className="w-full hud-hero-bg rounded-t h-[58%]" style={{ boxShadow: "0 0 12px var(--hud-glow)" }}></div>
-                  <span className="font-mono text-[10px] hud-hero-text font-bold">HARI INI</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t hud-border flex items-center justify-between font-mono text-xs">
-              <span className="hud-text-muted uppercase">Tingkat Kepatuhan Mingguan:</span>
+            <div className="mt-3 pt-3 border-t hud-border flex items-center justify-between font-mono text-xs">
+              <span className="hud-text-muted uppercase">Kepatuhan Mingguan:</span>
               <span className="hud-hero-text font-bold">85.7% TARGET TERCAPAI</span>
             </div>
           </div>
 
-          {/* TREND BERAT BADAN LINE GRAPH */}
+          {/* RECHARTS: TREND BERAT BADAN */}
           <div className="hud-card border rounded p-5 relative shadow-lg theme-transition">
-            <div className="flex justify-between items-center mb-4 border-b hud-border pb-2">
+            <div className="flex justify-between items-center mb-3 border-b hud-border pb-2">
               <div>
                 <div className="flex items-center gap-2">
                   <TrendingDown className="w-5 h-5 hud-beam-text" />
                   <h2 className="font-display text-base hud-text font-bold">TREND BERAT BADAN</h2>
                 </div>
-                <p className="font-mono text-[11px] hud-text-muted mt-0.5 uppercase">PROGRESS KAMPANYE 6 MINGGU</p>
+                <p className="font-mono text-[11px] hud-text-muted mt-0.5 uppercase">PROGRESS KAMPANYE AKTIF</p>
               </div>
               <div className="text-right">
                 <span className="font-display text-lg hud-hero-text font-bold">78.4 kg</span>
@@ -360,47 +364,16 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* SVG Line Graph */}
-            <div className="relative h-48 w-full">
-              <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 400 160">
-                <defs>
-                  <linearGradient id="gradWeight" x1="0%" x2="0%" y1="0%" y2="100%">
-                    <stop offset="0%" stopColor="var(--beam-accent)" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="var(--beam-accent)" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                <line stroke="var(--card-border)" strokeDasharray="4" strokeWidth="0.75" x1="0" x2="400" y1="30" y2="30" />
-                <line stroke="var(--card-border)" strokeDasharray="4" strokeWidth="0.75" x1="0" x2="400" y1="70" y2="70" />
-                <line stroke="var(--card-border)" strokeDasharray="4" strokeWidth="0.75" x1="0" x2="400" y1="110" y2="110" />
+            {/* Recharts Area Chart Visualizer */}
+            <WeightTrendChart data={weightTrend} />
 
-                <polygon fill="url(#gradWeight)" points="0,30 70,48 140,65 210,85 280,105 350,118 400,125 400,160 0,160" />
-                <polyline fill="none" points="0,30 70,48 140,65 210,85 280,105 350,118 400,125" stroke="var(--beam-accent)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
-                <circle cx="0" cy="30" fill="var(--card-bg)" r="4" stroke="var(--beam-accent)" strokeWidth="2" />
-                <circle cx="70" cy="48" fill="var(--card-bg)" r="4" stroke="var(--beam-accent)" strokeWidth="2" />
-                <circle cx="140" cy="65" fill="var(--card-bg)" r="4" stroke="var(--beam-accent)" strokeWidth="2" />
-                <circle cx="210" cy="85" fill="var(--card-bg)" r="4" stroke="var(--beam-accent)" strokeWidth="2" />
-                <circle cx="280" cy="105" fill="var(--card-bg)" r="4" stroke="var(--beam-accent)" strokeWidth="2" />
-                <circle cx="350" cy="118" fill="var(--card-bg)" r="4" stroke="var(--beam-accent)" strokeWidth="2" />
-                <circle cx="400" cy="125" fill="var(--hero-accent)" r="5.5" stroke="#ffffff" strokeWidth="2" />
-              </svg>
-
-              <div className="flex justify-between font-mono text-xs hud-text-muted mt-2">
-                <span>MG 1 (82kg)</span>
-                <span>MG 2</span>
-                <span>MG 3</span>
-                <span>MG 4</span>
-                <span>MG 5</span>
-                <span className="hud-hero-text font-bold">MG 6 (78.4kg)</span>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t hud-border flex justify-between items-center font-mono text-xs">
-              <span className="hud-text-muted">SASARAN TARGET: 75.0 kg</span>
-              <span className="hud-beam-text font-bold">RITME: 0.6 kg / MINGGU (OPTIMAL)</span>
+            <div className="mt-3 pt-3 border-t hud-border flex justify-between items-center font-mono text-xs">
+              <span className="hud-text-muted">SASARAN: 75.0 kg</span>
+              <span className="hud-beam-text font-bold">RITME: 0.6 kg / MG (OPTIMAL)</span>
             </div>
           </div>
 
-          {/* BREAKDOWN MAKRO MINGGUAN */}
+          {/* RECHARTS: BREAKDOWN MAKRO MINGGUAN */}
           <div className="hud-card border rounded p-5 shadow-lg theme-transition">
             <div className="flex justify-between items-center mb-3 border-b hud-border pb-2">
               <div className="flex items-center gap-2">
@@ -411,40 +384,30 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 sm:gap-3 my-2">
-              <div className="hud-card-inner p-3 rounded border hud-border text-center">
-                <span className="font-mono text-xs hud-beam-text block mb-1 font-bold">TOTAL PROTEIN</span>
+              <div className="hud-card-inner p-2.5 rounded border hud-border text-center">
+                <span className="font-mono text-[10px] hud-beam-text block mb-0.5 font-bold">PROTEIN</span>
                 <span className="font-display text-base font-bold hud-text">1,015g</span>
-                <span className="font-mono text-[10px] hud-text-muted block mt-0.5">Rata-rata 145g / hr</span>
+                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">38% total</span>
               </div>
-              <div className="hud-card-inner p-3 rounded border hud-border text-center">
-                <span className="font-mono text-xs hud-sub-text block mb-1 font-bold">TOTAL KARBO</span>
+              <div className="hud-card-inner p-2.5 rounded border hud-border text-center">
+                <span className="font-mono text-[10px] hud-sub-text block mb-0.5 font-bold">KARBO</span>
                 <span className="font-display text-base font-bold hud-text">1,120g</span>
-                <span className="font-mono text-[10px] hud-text-muted block mt-0.5">Rata-rata 160g / hr</span>
+                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">42% total</span>
               </div>
-              <div className="hud-card-inner p-3 rounded border hud-border text-center">
-                <span className="font-mono text-xs hud-hero-text block mb-1 font-bold">TOTAL LEMAK</span>
+              <div className="hud-card-inner p-2.5 rounded border hud-border text-center">
+                <span className="font-mono text-[10px] hud-hero-text block mb-0.5 font-bold">LEMAK</span>
                 <span className="font-display text-base font-bold hud-text">294g</span>
-                <span className="font-mono text-[10px] hud-text-muted block mt-0.5">Rata-rata 42g / hr</span>
+                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">20% total</span>
               </div>
             </div>
 
-            <div className="w-full mt-3">
-              <div className="w-full h-3 rounded overflow-hidden flex border hud-border">
-                <div className="h-full w-[38%]" style={{ backgroundColor: "var(--beam-accent)" }} title="Protein 38%"></div>
-                <div className="h-full w-[42%]" style={{ backgroundColor: "var(--sub-accent)" }} title="Karbohidrat 42%"></div>
-                <div className="hud-hero-bg h-full w-[20%]" title="Lemak 20%"></div>
-              </div>
-              <div className="flex justify-between items-center font-mono text-xs hud-text-muted mt-2">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--beam-accent)" }}></span> 38% P
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--sub-accent)" }}></span> 42% K
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full hud-hero-bg"></span> 20% L
-                </span>
-              </div>
+            {/* Recharts Pie Chart Visualizer */}
+            <MacroDistributionChart proteinPct={38} carbsPct={42} fatPct={20} />
+
+            <div className="flex justify-between items-center font-mono text-xs hud-text-muted mt-2 pt-2 border-t hud-border">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--beam-accent)" }}></span> 38% P</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--sub-accent)" }}></span> 42% K</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full hud-hero-bg"></span> 20% L</span>
             </div>
           </div>
 
@@ -462,11 +425,10 @@ export default function DashboardPage() {
                 <Utensils className="w-5 h-5 hud-hero-text" />
                 <h2 className="font-display text-base hud-text font-bold">LOG RANSUM TEMPUR</h2>
               </div>
-              <span className="font-mono text-xs hud-beam-text font-bold">3 TERCATAT // 1 TERTUNDA</span>
+              <span className="font-mono text-xs hud-beam-text font-bold">3 TERCATAT</span>
             </div>
 
             <div className="space-y-3">
-              {/* Sarapan */}
               <div className="hud-card-inner border hud-border rounded p-3 flex items-center justify-between hover:border-primary transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text font-mono text-xs">
@@ -483,7 +445,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Makan Siang */}
               <div className="hud-card-inner border hud-border rounded p-3 flex items-center justify-between hover:border-primary transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text font-mono text-xs">
@@ -491,7 +452,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <span className="font-mono text-[11px] hud-text-muted block uppercase">Serbuan Siang</span>
-                    <span className="font-display text-sm hud-text font-semibold">Cyber-Chicken Skewer Legion</span>
+                    <span className="font-display text-sm hud-text font-semibold">Cyber-Chicken Skewer</span>
                   </div>
                 </div>
                 <div className="text-right">
@@ -500,7 +461,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Snack */}
               <div className="hud-card-inner border hud-border rounded p-3 flex items-center justify-between hover:border-primary transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text font-mono text-xs">
@@ -517,7 +477,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Makan Malam Slot */}
+              {/* Pending Dinner Slot */}
               <div className="hud-card-inner border border-dashed rounded p-3 flex items-center justify-between" style={{ borderColor: "var(--hero-accent)" }}>
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded hud-card border border-dashed flex items-center justify-center hud-hero-text font-mono text-xs animate-pulse" style={{ borderColor: "var(--hero-accent)" }}>
@@ -529,8 +489,8 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="font-mono text-xs hud-beam-text font-bold block">530 kcal</span>
-                  <span className="font-mono text-[11px] hud-text-muted">Batas Tersisa</span>
+                  <span className="font-mono text-xs hud-beam-text font-bold block">{remainingKcal} kcal</span>
+                  <span className="font-mono text-[11px] hud-text-muted">Batas Sisa</span>
                 </div>
               </div>
             </div>
@@ -570,24 +530,6 @@ export default function DashboardPage() {
               <div className="hud-card-inner p-3.5 rounded border hud-border">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2.5">
-                    <div className="w-4 h-4 mt-0.5 border hud-border flex items-center justify-center"></div>
-                    <div>
-                      <h3 className="font-display text-xs hud-text font-semibold">Jaga Kalori Dalam Rentang ±50 kcal</h3>
-                      <p className="text-xs text-muted-foreground hud-text-muted mt-0.5">Sinkronisasi ransum akhir di 1,900-2,000 kcal.</p>
-                    </div>
-                  </div>
-                  <span className="font-mono text-[11px] hud-sub-text px-2 py-0.5 rounded border hud-border whitespace-nowrap">
-                    +500 KOIN
-                  </span>
-                </div>
-                <div className="w-full h-1.5 hud-card-high rounded mt-2.5 overflow-hidden">
-                  <div className="h-full w-[72%]" style={{ backgroundColor: "var(--sub-accent)" }}></div>
-                </div>
-              </div>
-
-              <div className="hud-card-inner p-3.5 rounded border hud-border">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 mt-0.5 hud-hero-text" />
                     <div>
                       <h3 className="font-display text-xs hud-text font-semibold">Reservoir Hidrasi (2,500ml)</h3>
@@ -608,13 +550,16 @@ export default function DashboardPage() {
               DISPATCH CEPAT TAKTIS
             </span>
             <div className="grid grid-cols-1 gap-2.5">
-              <button className="hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold transition-all flex items-center justify-between shadow-lg hover:opacity-90">
+              <Link
+                href="/scanner"
+                className="hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold transition-all flex items-center justify-between shadow-lg hover:opacity-90"
+              >
                 <span className="flex items-center gap-2">
                   <Camera className="w-4 h-4" />
                   PINDAI CEPAT RANSUM
                 </span>
                 <span className="text-[10px] font-mono">[AI-KAMERA]</span>
-              </button>
+              </Link>
 
               <button className="hud-card-inner border hud-border hud-beam-text py-3 px-4 font-mono text-xs font-bold hover:bg-sky-500/10 transition-colors flex items-center justify-between" style={{ borderColor: "var(--beam-accent)" }}>
                 <span className="flex items-center gap-2">
@@ -624,13 +569,16 @@ export default function DashboardPage() {
                 <span className="text-[10px] font-mono">[HIDRASI]</span>
               </button>
 
-              <button className="hud-card-inner border hud-border hud-sub-text py-3 px-4 font-mono text-xs font-bold hover:opacity-80 transition-colors flex items-center justify-between">
+              <Link
+                href="/activities"
+                className="hud-card-inner border hud-border hud-sub-text py-3 px-4 font-mono text-xs font-bold hover:opacity-80 transition-colors flex items-center justify-between"
+              >
                 <span className="flex items-center gap-2">
                   <Dumbbell className="w-4 h-4" />
                   LOG DUNGEON (LATIHAN)
                 </span>
                 <span className="text-[10px] font-mono">[BAKAR EXP]</span>
-              </button>
+              </Link>
             </div>
           </div>
 
