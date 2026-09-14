@@ -35,9 +35,40 @@ export default function ScannerPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<any | null>(null);
+  const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
+
+  // Daily calorie budget state (Requirement: Target Kalori - Kalori Masuk = Sisa Kalori)
+  const [dailyTarget, setDailyTarget] = useState<number>(1950);
+  const [dailyConsumed, setDailyConsumed] = useState<number>(1420);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const savedProg = localStorage.getItem("chai_active_program");
+    if (savedProg) {
+      try {
+        const p = JSON.parse(savedProg);
+        if (p.target_daily_kcal) setDailyTarget(Number(p.target_daily_kcal));
+      } catch {}
+    }
+    const savedConsumed = localStorage.getItem("chai_daily_consumed");
+    if (savedConsumed) {
+      setDailyConsumed(Number(savedConsumed));
+    }
+  }, []);
+
+  const remainingKcal = Math.max(0, dailyTarget - dailyConsumed);
+  const pctConsumed = Math.min(100, Math.round((dailyConsumed / (dailyTarget || 1)) * 100));
+
+  const handleSaveMealLog = () => {
+    if (!analysisResult?.data) return;
+    const addedKcal = analysisResult.data.total_calories_kcal || 0;
+    const updated = dailyConsumed + addedKcal;
+    setDailyConsumed(updated);
+    localStorage.setItem("chai_daily_consumed", String(updated));
+    setSavedSuccess(`Berhasil menyimpan ransum (${addedKcal} kcal)! Sisa kuota kalori Anda telah diperbarui.`);
+  };
 
   // Auto-pick up mobile quick camera capture from dock
   useEffect(() => {
@@ -139,6 +170,54 @@ export default function ScannerPage() {
             </span>
           </div>
         </div>
+
+        {/* Status Kalori: Bar progres (Target Kalori - Kalori Masuk = Sisa Kalori) */}
+        <div className="hud-card border rounded p-4 mb-6 shadow-xl relative overflow-hidden theme-transition border-primary/40 bg-gradient-to-r from-primary/5 to-transparent">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2 font-mono">
+            <div className="flex items-center gap-2.5">
+              <Flame className="w-5 h-5 hud-hero-text animate-pulse shrink-0" />
+              <div>
+                <span className="text-xs font-bold hud-text uppercase block">
+                  STATUS KALORI HARIAN (MENU UTAMA)
+                </span>
+                <span className="text-[10px] text-outline uppercase block">
+                  TARGET ({dailyTarget} kcal) - KALORI MASUK ({dailyConsumed} kcal) = SISA ({remainingKcal} kcal)
+                </span>
+              </div>
+            </div>
+            <div className="text-left sm:text-right">
+              <span className="text-sm font-bold font-display hud-hero-text">
+                {remainingKcal} KCAL SISA
+              </span>
+              <span className="text-[10px] text-outline block">
+                {dailyConsumed} / {dailyTarget} kcal ({pctConsumed}%)
+              </span>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full h-3 rounded-full hud-card-inner border hud-border overflow-hidden p-0.5">
+            <div 
+              className="h-full rounded-full hud-hero-bg transition-all duration-500"
+              style={{ width: `${Math.min(100, pctConsumed)}%` }}
+            />
+          </div>
+        </div>
+
+        {savedSuccess && (
+          <div className="mb-6 p-3 rounded bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 font-mono text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{savedSuccess}</span>
+            </div>
+            <Link 
+              href="/"
+              className="px-2.5 py-1 rounded hud-card-high border hud-border hud-hero-text font-bold text-[10px] uppercase hover:bg-primary/20 shrink-0"
+            >
+              Lihat Dashboard ➔
+            </Link>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="mb-6 p-3 rounded bg-red-500/10 border border-red-500/40 text-red-400 font-mono text-xs flex items-center gap-2">
@@ -387,12 +466,21 @@ export default function ScannerPage() {
                   </div>
                 )}
 
-                <div className="mt-4 pt-3 border-t hud-border flex justify-end">
+                <div className="mt-4 pt-4 border-t hud-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSaveMealLog}
+                    className="hud-clip-chamfer hud-hero-bg py-2.5 px-5 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 shadow-lg hover:opacity-90 active:scale-95 transition-all text-black dark:text-black cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>SIMPAN CATATAN MAKANAN</span>
+                  </button>
+
                   <Link
                     href="/"
-                    className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase flex items-center gap-1.5"
+                    className="hud-card-high border hud-border py-2.5 px-4 rounded font-mono text-xs font-bold uppercase flex items-center justify-center gap-1.5 hud-hero-text hover:bg-primary/20 transition-all text-center"
                   >
-                    <span>LANJUT KE STEP 7: BUKA DASHBOARD HUD</span>
+                    <span>LIHAT DASHBOARD & PROGRESS GRAFIK</span>
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>

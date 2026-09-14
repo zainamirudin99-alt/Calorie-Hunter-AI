@@ -18,17 +18,15 @@ export function CampaignStepper() {
   const pathname = usePathname();
 
   const steps = [
-    { id: 1, name: "Auth", href: "/auth", icon: UserCheck, code: "01" },
-    { id: 2, name: "Profil Biometrik", href: "/profile", icon: User, code: "02" },
-    { id: 3, name: "Aktivitas", href: "/activities", icon: Activity, code: "03" },
-    { id: 4, name: "TDEE & Program", href: "/program", icon: Target, code: "04" },
-    { id: 5, name: "Meal Plan AI", href: "/meal-plan", icon: UtensilsCrossed, code: "05" },
-    { id: 6, name: "Tracking Scanner", href: "/scanner", icon: ScanLine, code: "06" },
-    { id: 7, name: "Dashboard HUD", href: "/", icon: LayoutDashboard, code: "07" },
+    { id: 1, name: "Registrasi / Login", href: "/auth", icon: UserCheck, code: "01" },
+    { id: 2, name: "Data Diri & Aktivitas", href: "/profile", icon: User, code: "02" },
+    { id: 3, name: "Hasil TDEE & Program", href: "/program", icon: Target, code: "03" },
+    { id: 4, name: "Tracking Kalori (Menu Utama)", href: "/scanner", icon: ScanLine, code: "04" },
+    { id: 5, name: "Dashboard & Grafik", href: "/", icon: LayoutDashboard, code: "05" },
   ];
 
   const currentStepIndex = steps.findIndex((s) => s.href === pathname);
-  const activeIndex = currentStepIndex !== -1 ? currentStepIndex : 6;
+  const activeIndex = currentStepIndex !== -1 ? currentStepIndex : (pathname === "/meal-plan" ? 2 : 4);
 
   return (
     <div className="w-full hud-card-inner border-b hud-border px-4 py-2 overflow-x-auto theme-transition">

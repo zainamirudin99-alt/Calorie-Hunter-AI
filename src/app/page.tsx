@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TacticalHeader } from "@/components/hud/header";
 import { TacticalSidebar } from "@/components/hud/sidebar";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
@@ -33,15 +34,21 @@ import {
 } from "lucide-react";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { isUltraman } = useTacticalTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [telemetry, setTelemetry] = useState<any | null>(null);
 
-  // Fetch summary
+  // Auto-redirect to /auth if not logged in (Requirement: initial entry is Login & Registration)
   useEffect(() => {
+    const token = localStorage.getItem("chai_auth_token");
+    if (!token) {
+      router.replace("/auth");
+      return;
+    }
+
     const fetchSummary = async () => {
       try {
-        const token = localStorage.getItem("chai_auth_token");
         const res = await fetch("/api/dashboard/summary", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -52,7 +59,7 @@ export default function DashboardPage() {
       } catch {}
     };
     fetchSummary();
-  }, []);
+  }, [router]);
 
   const dailyHistory = telemetry?.daily_history || [
     { day: "SEN", calories: 1890, target: 1950 },

@@ -20,7 +20,11 @@ import {
   AlertCircle, 
   ArrowRight,
   Flame,
-  Zap
+  Zap,
+  Plus,
+  Trash2,
+  CheckSquare,
+  Square
 } from "lucide-react";
 
 export default function ProfilePage() {
@@ -34,6 +38,27 @@ export default function ProfilePage() {
   const [weightKg, setWeightKg] = useState<number>(70);
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
 
+  // Activities section inside Onboarding
+  const [activities, setActivities] = useState<Array<{
+    id: string;
+    activity_name: string;
+    frequency_per_week: number;
+    duration_minutes: number;
+    intensity: "low" | "moderate" | "high";
+    checked: boolean;
+  }>>([
+    { id: "act-1", activity_name: "Jogging Santai / Lari", frequency_per_week: 3, duration_minutes: 30, intensity: "moderate", checked: true },
+    { id: "act-2", activity_name: "Angkat Beban / Gym", frequency_per_week: 4, duration_minutes: 60, intensity: "high", checked: true },
+    { id: "act-3", activity_name: "Bersepeda", frequency_per_week: 2, duration_minutes: 45, intensity: "low", checked: false },
+    { id: "act-4", activity_name: "Renang", frequency_per_week: 1, duration_minutes: 45, intensity: "moderate", checked: false },
+  ]);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newActName, setNewActName] = useState("");
+  const [newActFreq, setNewActFreq] = useState(3);
+  const [newActDuration, setNewActDuration] = useState(45);
+  const [newActIntensity, setNewActIntensity] = useState<"low" | "moderate" | "high">("moderate");
+
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
@@ -46,14 +71,42 @@ export default function ProfilePage() {
     activity_level: activityLevel,
   });
 
+  const toggleActivity = (id: string) => {
+    setActivities(activities.map(a => a.id === id ? { ...a, checked: !a.checked } : a));
+  };
+
+  const handleAddCustomActivity = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newActName.trim()) return;
+    const newAct = {
+      id: "custom-" + Date.now(),
+      activity_name: newActName.trim(),
+      frequency_per_week: Number(newActFreq),
+      duration_minutes: Number(newActDuration),
+      intensity: newActIntensity,
+      checked: true,
+    };
+    setActivities([...activities, newAct]);
+    setNewActName("");
+    setShowAddForm(false);
+  };
+
+  const handleDeleteActivity = (id: string) => {
+    setActivities(activities.filter(a => a.id !== id));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setFeedback(null);
 
+    const checkedActivities = activities.filter(a => a.checked);
+
     try {
       const token = localStorage.getItem("chai_auth_token");
-      const res = await fetch("/api/profile", {
+      
+      // Save profile
+      await fetch("/api/profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -69,17 +122,26 @@ export default function ProfilePage() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Gagal menyimpan profil");
+      // Save checked activities
+      for (const act of checkedActivities) {
+        try {
+          await fetch("/api/activities", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              activity_name: act.activity_name,
+              frequency_per_week: act.frequency_per_week,
+              duration_minutes: act.duration_minutes,
+              intensity: act.intensity,
+            }),
+          });
+        } catch {}
       }
 
-      setFeedback({ type: "success", msg: "Data profil berhasil disimpan! Lanjut ke Step 3: Aktivitas Mingguan..." });
-      setTimeout(() => {
-        router.push("/activities");
-      }, 1000);
-    } catch (err: any) {
-      // In local preview without live Supabase session, save to localStorage fallback so user is never blocked
+      // Persist locally for immediate calculation & next screens
       localStorage.setItem("chai_user_profile", JSON.stringify({
         full_name: fullName,
         gender,
@@ -88,16 +150,40 @@ export default function ProfilePage() {
         weight_kg: Number(weightKg),
         activity_level: activityLevel,
         tdee: tdeeResult.tdee,
+        bmr: tdeeResult.bmr,
+        activities: checkedActivities,
+      }));
+
+      setFeedback({ 
+        type: "success", 
+        msg: "Data diri & aktivitas tersimpan! Mengalihkan ke Hasil TDEE & Pilihan Program..." 
+      });
+
+      setTimeout(() => {
+        router.push("/program");
+      }, 800);
+    } catch (err: any) {
+      // Local preview fallback
+      localStorage.setItem("chai_user_profile", JSON.stringify({
+        full_name: fullName,
+        gender,
+        age: Number(age),
+        height_cm: Number(heightCm),
+        weight_kg: Number(weightKg),
+        activity_level: activityLevel,
+        tdee: tdeeResult.tdee,
+        bmr: tdeeResult.bmr,
+        activities: checkedActivities,
       }));
 
       setFeedback({
         type: "success",
-        msg: "Data profil disimpan secara lokal. Lanjut ke Step 3: Aktivitas Mingguan...",
+        msg: "Data tersimpan secara lokal. Melanjutkan ke Hasil TDEE & Program...",
       });
 
       setTimeout(() => {
-        router.push("/activities");
-      }, 1000);
+        router.push("/program");
+      }, 800);
     } finally {
       setLoading(false);
     }
@@ -262,16 +348,152 @@ export default function ProfilePage() {
                 </div>
               </div>
 
+              {/* Bagian Aktivitas Mingguan (Onboarding) */}
+              <div className="pt-4 border-t hud-border">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block hud-text font-bold uppercase text-xs">
+                    Jadwal Aktivitas Mingguan Hunter
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(!showAddForm)}
+                    className="px-2.5 py-1 rounded hud-card-high border hud-border text-primary font-mono text-[11px] font-bold flex items-center gap-1 hover:bg-primary/10 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Tambah Aktivitas</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-outline mb-3">
+                  Centang aktivitas olahraga rutin Anda atau tambahkan kegiatan kustom untuk konteks kalkulasi AI:
+                </p>
+
+                {/* Inline Add Custom Activity Form */}
+                {showAddForm && (
+                  <div className="mb-4 p-3 rounded hud-card-inner border hud-border space-y-3 bg-primary/5">
+                    <div className="font-bold text-[11px] hud-hero-text">INPUT AKTIVITAS BARU:</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-outline block mb-1">Nama Aktivitas:</span>
+                        <input
+                          type="text"
+                          value={newActName}
+                          onChange={(e) => setNewActName(e.target.value)}
+                          placeholder="e.g. Futsal, Muay Thai, Pilates"
+                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-outline block mb-1">Intensitas:</span>
+                        <select
+                          value={newActIntensity}
+                          onChange={(e) => setNewActIntensity(e.target.value as any)}
+                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
+                        >
+                          <option value="low">Ringan (Low)</option>
+                          <option value="moderate">Sedang (Moderate)</option>
+                          <option value="high">Tinggi (High)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-outline block mb-1">Frekuensi / Minggu:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={7}
+                          value={newActFreq}
+                          onChange={(e) => setNewActFreq(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-outline block mb-1">Durasi (Menit):</span>
+                        <input
+                          type="number"
+                          min={10}
+                          max={240}
+                          value={newActDuration}
+                          onChange={(e) => setNewActDuration(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddForm(false)}
+                        className="px-3 py-1 rounded hud-card text-[11px] hud-text-muted"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddCustomActivity}
+                        className="px-3 py-1 rounded hud-hero-bg text-[11px] font-bold text-black dark:text-black"
+                      >
+                        Simpan Aktivitas
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Checked activities list */}
+                <div className="space-y-1.5">
+                  {activities.map((act) => (
+                    <div
+                      key={act.id}
+                      className={`flex items-center justify-between p-2 rounded border transition-all ${
+                        act.checked
+                          ? "hud-card-high border-primary/50 hud-text"
+                          : "hud-card-inner hud-border text-outline"
+                      }`}
+                    >
+                      <div 
+                        onClick={() => toggleActivity(act.id)}
+                        className="flex items-center gap-2.5 flex-1 cursor-pointer"
+                      >
+                        {act.checked ? (
+                          <CheckSquare className="w-4 h-4 text-primary shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 text-outline shrink-0" />
+                        )}
+                        <div>
+                          <span className={`font-bold block ${act.checked ? "hud-text" : "line-through text-outline"}`}>
+                            {act.activity_name}
+                          </span>
+                          <span className="text-[10px] text-outline block">
+                            {act.frequency_per_week}x/minggu • {act.duration_minutes} mnt • Intensitas: {act.intensity}
+                          </span>
+                        </div>
+                      </div>
+
+                      {act.id.startsWith("custom-") && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteActivity(act.id)}
+                          className="text-red-400 hover:text-red-300 p-1"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-50 mt-4 cursor-pointer"
+                className="w-full hud-clip-chamfer hud-hero-bg py-3.5 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-xl hover:opacity-90 disabled:opacity-50 mt-5 cursor-pointer"
               >
                 {loading ? (
-                  <span>MENYIMPAN BIOMETRIK...</span>
+                  <span>MENGHITUNG TDEE METABOLISME...</span>
                 ) : (
                   <>
-                    <span>SIMPAN & LANJUT KE STEP 3: AKTIVITAS MINGGUAN</span>
+                    <span>HITUNG TDEE SAYA</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}

@@ -77,9 +77,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // Automatically sign in the newly registered user so they don't need a separate login step
+    const { data: sessionData } = await supabaseAdmin.auth.signInWithPassword({
+      email: syntheticEmail,
+      password,
+    });
+
     return NextResponse.json({
       success: true,
-      message: "Registrasi berhasil! Silakan login dengan username Anda.",
+      message: "Registrasi berhasil! Mengalihkan ke pengisian data diri...",
+      session: sessionData?.session || null,
       user: {
         id: authData.user.id,
         username: cleanUsername,

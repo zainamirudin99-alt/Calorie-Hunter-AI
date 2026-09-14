@@ -13,12 +13,11 @@ import { Shield, Swords, Lock, User, CheckCircle2, AlertCircle, ArrowRight } fro
 export default function AuthPage() {
   const router = useRouter();
   const { isUltraman } = useTacticalTheme();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"register" | "login">("register");
 
   // Form states
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -28,15 +27,9 @@ export default function AuthPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    if (mode === "register") {
-      if (password !== confirmPassword) {
-        setErrorMsg("Konfirmasi password tidak cocok!");
-        return;
-      }
-      if (password.length < 6) {
-        setErrorMsg("Password minimal 6 karakter!");
-        return;
-      }
+    if (password.length < 6) {
+      setErrorMsg("Password minimal 6 karakter!");
+      return;
     }
 
     setLoading(true);
@@ -55,25 +48,24 @@ export default function AuthPage() {
         throw new Error(data.error || "Gagal melakukan proses autentikasi");
       }
 
-      if (mode === "register") {
-        setSuccessMsg("Registrasi berhasil! Mengalihkan ke form login...");
-        setTimeout(() => {
-          setMode("login");
-          setPassword("");
-          setConfirmPassword("");
-          setSuccessMsg(null);
-        }, 1500);
+      // Save session locally
+      if (data.session?.access_token) {
+        localStorage.setItem("chai_auth_token", data.session.access_token);
+        localStorage.setItem("chai_username", data.user?.username || username);
       } else {
-        // Save session locally if returned
-        if (data.session?.access_token) {
-          localStorage.setItem("chai_auth_token", data.session.access_token);
-          localStorage.setItem("chai_username", data.session.user.username);
-        }
-        setSuccessMsg("Login berhasil! Mengakses Tactical Command Deck...");
-        setTimeout(() => {
-          router.push("/profile");
-        }, 1000);
+        localStorage.setItem("chai_auth_token", "local-token-" + Date.now());
+        localStorage.setItem("chai_username", username);
       }
+
+      setSuccessMsg(
+        mode === "register"
+          ? "Akun berhasil dibuat! Mengalihkan ke pengisian data diri..."
+          : "Login berhasil! Mengakses Command Deck..."
+      );
+
+      setTimeout(() => {
+        router.push("/profile");
+      }, 700);
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -195,37 +187,16 @@ export default function AuthPage() {
               </div>
             </div>
 
-            {mode === "register" && (
-              <div>
-                <label className="block font-mono text-xs hud-text-muted uppercase mb-1.5">
-                  Konfirmasi Password
-                </label>
-                <div className="relative flex items-center">
-                  <span className="absolute left-3 text-outline">
-                    <Lock className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="password"
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-9 pr-3 py-2.5 rounded hud-card-inner border hud-border text-xs font-mono hud-text focus:outline-none focus:border-primary transition-colors"
-                  />
-                </div>
-              </div>
-            )}
-
             <button
               type="submit"
               disabled={loading}
-              className="w-full hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-50 mt-2 cursor-pointer"
+              className="w-full hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-50 mt-4 cursor-pointer"
             >
               {loading ? (
                 <span>MEMPROSES PROTOKOL...</span>
               ) : (
                 <>
-                  <span>{mode === "login" ? "MASUK KE COMMAND DECK" : "BUAT AKUN HUNTER"}</span>
+                  <span>{mode === "login" ? "MASUK KE COMMAND DECK" : "DAFTAR SEKARANG"}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

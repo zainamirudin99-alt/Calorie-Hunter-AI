@@ -117,12 +117,12 @@ export default function ProgramSelectionPage() {
 
       setFeedback({
         type: "success",
-        msg: `Program ${selectedType.toUpperCase()} aktif! Menyiapkan AI Rencana Makan...`,
+        msg: `Program ${selectedType.toUpperCase()} aktif! Membuka Layar Tracking Kalori (Menu Utama)...`,
       });
 
       setTimeout(() => {
-        router.push("/meal-plan");
-      }, 1500);
+        router.push("/scanner");
+      }, 900);
     } catch {
       // Local fallback
       localStorage.setItem("chai_active_program", JSON.stringify({
@@ -135,12 +135,12 @@ export default function ProgramSelectionPage() {
 
       setFeedback({
         type: "success",
-        msg: `Program ${selectedType.toUpperCase()} aktif secara lokal! Melanjutkan ke Rencana Makan...`,
+        msg: `Program ${selectedType.toUpperCase()} aktif secara lokal! Melanjutkan ke Tracking Kalori...`,
       });
 
       setTimeout(() => {
-        router.push("/meal-plan");
-      }, 1500);
+        router.push("/scanner");
+      }, 900);
     } finally {
       setLoading(false);
     }
@@ -260,6 +260,62 @@ export default function ProgramSelectionPage() {
           })}
         </div>
 
+        {/* AI Weekly Meal Plan Recommendation Section (Berlaku 1 Bulan ke Depan) */}
+        <div className="hud-card border rounded p-5 shadow-xl relative theme-transition space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b hud-border pb-3">
+            <div>
+              <span className="font-display text-xs font-bold hud-hero-text uppercase tracking-wider flex items-center gap-2">
+                <Flame className="w-4 h-4" />
+                RENCANA MAKAN MINGGUAN AI (BERLAKU 1 BULAN KE DEPAN)
+              </span>
+              <span className="font-mono text-[11px] hud-text-muted block mt-0.5">
+                Target Kalori Harian: <strong className="hud-text font-bold">{programs.find(p => p.id === selectedType)?.targetKcal} kcal</strong> • Strategi: <strong className="hud-hero-text uppercase font-bold">{selectedType}</strong>
+              </span>
+            </div>
+            <span className="font-mono text-[10px] px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold">
+              AI GENERATED MEAL MATRIX
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
+            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold hud-hero-text">SARAPAN (08:00)</span>
+                <span className="text-outline">~420 kcal</span>
+              </div>
+              <p className="text-[11px] hud-text font-bold">Oatmeal + Telur Rebus</p>
+              <span className="text-[10px] text-outline block">28g Protein • 52g Karbo • 10g Lemak</span>
+            </div>
+
+            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold hud-beam-text">SERBUAN SIANG (13:00)</span>
+                <span className="text-outline">~680 kcal</span>
+              </div>
+              <p className="text-[11px] hud-text font-bold">Dada Ayam Bakar + Nasi Merah</p>
+              <span className="text-[10px] text-outline block">54g Protein • 65g Karbo • 18g Lemak</span>
+            </div>
+
+            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold hud-sub-text">KATALIS ENERGI (16:30)</span>
+                <span className="text-outline">~180 kcal</span>
+              </div>
+              <p className="text-[11px] hud-text font-bold">Whey Protein / Pisang</p>
+              <span className="text-[10px] text-outline block">24g Protein • 18g Karbo • 2g Lemak</span>
+            </div>
+
+            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold hud-hero-text">MAKAN MALAM (19:30)</span>
+                <span className="text-outline">~530 kcal</span>
+              </div>
+              <p className="text-[11px] hud-text font-bold">Ikan Gurame Panggang + Sayur</p>
+              <span className="text-[10px] text-outline block">42g Protein • 38g Karbo • 14g Lemak</span>
+            </div>
+          </div>
+        </div>
+
         {/* Action Button & Invariant Reminder */}
         <div className="hud-card border rounded p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
           <div className="font-mono text-xs">
@@ -268,7 +324,7 @@ export default function ProgramSelectionPage() {
               INVARIANT ATURAN 6 BULAN (ADR-5)
             </span>
             <span className="hud-text-muted text-[11px] block mt-0.5">
-              Program akan aktif selama 180 hari. Setelah berakhir, sistem akan mengunci tracking hingga update berat badan baru dimasukkan.
+              Program akan aktif selama 180 hari. Setelah itu, evaluasi 6 bulan wajib dilakukan untuk kalkulasi ulang.
             </span>
           </div>
 
@@ -281,7 +337,7 @@ export default function ProgramSelectionPage() {
               <span>MENGAKTIFKAN SISTEM...</span>
             ) : (
               <>
-                <span>AKTIFKAN PROGRAM & LANJUT KE STEP 5: MEAL PLAN AI</span>
+                <span>MULAI TRACKING</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
