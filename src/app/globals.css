@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================================================= */
+/* DUAL THEME ENGINE: GODZILLA TITAN (DARK) vs ULTRAMAN DEFENSE (LIGHT)      */
+/* ========================================================================= */
+:root {
+  --bg-page: #0f131d;
+  --card-bg: #0a0e18;
+  --card-inner: #1c1f2a;
+  --card-high: #262a35;
+  --card-border: #3d4a3d;
+  --text-main: #dfe2f1;
+  --text-muted: #bccbb9;
+  --hero-accent: #4be277;
+  --beam-accent: #00f0ff;
+  --sub-accent: #ddb7ff;
+  --ticker-bg: #070a11;
+  --tag-bg: rgba(75, 226, 119, 0.12);
+  --btn-bg: #4be277;
+  --btn-text: #003915;
+  --hud-glow: rgba(75, 226, 119, 0.4);
+}
+
+/* ULTRAMAN LIGHT MODE OVERRIDES */
+html.theme-ultraman {
+  --bg-page: #e8ecf4;
+  --card-bg: #ffffff;
+  --card-inner: #f1f4fa;
+  --card-high: #e2e8f2;
+  --card-border: #cbd5e1;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --hero-accent: #ef4444; /* Ultraman Heroic Red */
+  --beam-accent: #0284c7; /* Science Patrol Solar Azure */
+  --sub-accent: #0284c7;
+  --ticker-bg: #f8fafc;
+  --tag-bg: rgba(239, 68, 68, 0.12);
+  --btn-bg: #ef4444;
+  --btn-text: #ffffff;
+  --hud-glow: rgba(239, 68, 68, 0.35);
+}
+
+/* Dynamic CSS Variables hookups */
+.hud-surface-bg { background-color: var(--bg-page); }
+.hud-card { background-color: var(--card-bg); border-color: var(--card-border); }
+.hud-card-inner { background-color: var(--card-inner); border-color: var(--card-border); }
+.hud-card-high { background-color: var(--card-high); border-color: var(--card-border); }
+.hud-border { border-color: var(--card-border); }
+.hud-text { color: var(--text-main); }
+.hud-text-muted { color: var(--text-muted); }
+.hud-hero-text { color: var(--hero-accent); }
+.hud-beam-text { color: var(--beam-accent); }
+.hud-sub-text { color: var(--sub-accent); }
+.hud-hero-bg { background-color: var(--hero-accent); color: var(--btn-text); }
+.hud-ticker { background-color: var(--ticker-bg); border-color: var(--card-border); }
+.theme-transition { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
+
+/* Sci-Fi HUD Utility Classes */
+.hud-clip-chamfer {
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+
+.hud-clip-corner-cut {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+.crt-scanlines {
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.35) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.04));
+  background-size: 100% 3px, 6px 100%;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(75, 226, 119, 0.35)); }
+  50% { filter: drop-shadow(0 0 24px rgba(77, 216, 247, 0.6)); }
+}
+
+.glow-companion {
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+html.theme-ultraman .glow-companion {
+  animation: pulseUltraman 3s ease-in-out infinite;
+}
+
+@keyframes pulseUltraman {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.4)); }
+  50% { filter: drop-shadow(0 0 24px rgba(2, 132, 199, 0.6)); }
+}
+
+.radial-hud-track {
+  stroke-dasharray: 264;
+  stroke-dashoffset: 72;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke 0.4s ease, stroke-dashoffset 0.5s ease;
+}
