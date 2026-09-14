@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { MobileTacticalDock } from "@/components/hud/mobile-dock";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -28,10 +29,11 @@ export default function RootLayout({
   return (
     <html lang="id" className="dark" id="theme-root">
       <body
-        className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans hud-surface-bg hud-text antialiased min-h-screen flex flex-col overflow-x-hidden theme-transition`}
+        className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans hud-surface-bg hud-text antialiased min-h-screen flex flex-col overflow-x-hidden theme-transition pb-20 md:pb-0`}
       >
         <ThemeProvider>
           {children}
+          <MobileTacticalDock />
         </ThemeProvider>
       </body>
     </html>

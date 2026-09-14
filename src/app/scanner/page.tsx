@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { TacticalHeader } from "@/components/hud/header";
@@ -38,6 +38,24 @@ export default function ScannerPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-pick up mobile quick camera capture from dock
+  useEffect(() => {
+    const quickCapture = sessionStorage.getItem("chai_quick_capture");
+    if (quickCapture) {
+      setPreviewUrl(quickCapture);
+      setInputMode("photo");
+      // Convert data URL to file
+      fetch(quickCapture)
+        .then(res => res.blob())
+        .then(blob => {
+          const file = new File([blob], "mobile-camera-capture.jpg", { type: "image/jpeg" });
+          setSelectedFile(file);
+        })
+        .catch(() => {});
+      sessionStorage.removeItem("chai_quick_capture");
+    }
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setErrorMsg(null);
