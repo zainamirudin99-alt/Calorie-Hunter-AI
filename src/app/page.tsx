@@ -355,12 +355,11 @@ export default function DashboardPage() {
 
             {/* Visual Companion Frame */}
             <div className="relative h-56 rounded hud-card-inner border hud-border overflow-hidden flex items-center justify-center crt-scanlines">
-              <Image
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
                 src={companionAvatar}
                 alt={companionName}
-                fill
-                className="object-cover opacity-85 glow-companion transition-all duration-500"
-                unoptimized
+                className="w-full h-full object-cover opacity-85 glow-companion transition-all duration-500"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
 
@@ -920,12 +919,11 @@ export default function DashboardPage() {
                 <div className="border-2 border-dashed hud-border rounded-lg p-4 text-center hud-card-inner">
                   {previewUploadUrl ? (
                     <div className="relative w-40 h-40 mx-auto rounded overflow-hidden border hud-border mb-3">
-                      <Image
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
                         src={previewUploadUrl}
                         alt="Preview Upload"
-                        fill
-                        className="object-cover"
-                        unoptimized
+                        className="w-full h-full object-cover"
                       />
                     </div>
                   ) : (
@@ -980,15 +978,30 @@ export default function DashboardPage() {
                   </p>
                 </div>
 
-                {aiGeneratedUrl && (
-                  <div className="text-center">
-                    <div className="relative w-44 h-44 mx-auto rounded-lg overflow-hidden border-2 border-primary shadow-lg mb-2">
-                      <Image
+                {/* AI Image Generation Active Loading Box */}
+                {isGeneratingAi && (
+                  <div className="text-center my-2">
+                    <div className="relative w-44 h-44 mx-auto rounded-lg overflow-hidden border-2 border-primary/60 shadow-lg mb-2 hud-card-inner flex flex-col items-center justify-center p-3 animate-pulse">
+                      <RefreshCw className="w-8 h-8 hud-hero-text animate-spin mb-2" />
+                      <span className="font-mono text-xs hud-hero-text font-bold uppercase tracking-wider">
+                        MENSINTESIS VISUAL...
+                      </span>
+                      <span className="font-mono text-[10px] text-outline mt-1 text-center">
+                        Memproses bio-mech neural render
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Image Preview Result */}
+                {!isGeneratingAi && aiGeneratedUrl && (
+                  <div className="text-center my-2">
+                    <div className="relative w-44 h-44 mx-auto rounded-lg overflow-hidden border-2 border-primary shadow-lg mb-2 bg-black/60 flex items-center justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
                         src={aiGeneratedUrl}
                         alt="Hasil AI"
-                        fill
-                        className="object-cover"
-                        unoptimized
+                        className="w-full h-full object-cover"
                       />
                     </div>
                     <span className="font-mono text-[11px] hud-beam-text block">Preview Visual AI Berhasil</span>
