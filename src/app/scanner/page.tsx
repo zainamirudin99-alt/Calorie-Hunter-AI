@@ -272,14 +272,38 @@ export default function TrackingMakananPage() {
     const fetchDateLogs = async () => {
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+        // If not logged in, rely solely on localStorage — never query or overwrite local data
+        if (!token) return;
+
         const res = await fetch(`/api/food-log?date=${selectedDate}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.items)) {
             setLogsByDate(prev => {
-              const updated = { ...prev, [selectedDate]: data.items };
+              const localItems = prev[selectedDate] || [];
+
+              // Case A: Server returned items -> Merge authoritative server items with any unsynced local items
+              if (data.items.length > 0) {
+                const serverItemNames = new Set(data.items.map((it: any) => String(it.food_name).toLowerCase().trim()));
+                const unsyncedLocal = localItems.filter(
+                  (local: any) => !serverItemNames.has(String(local.food_name).toLowerCase().trim())
+                );
+                const merged = [...data.items, ...unsyncedLocal];
+                const updated = { ...prev, [selectedDate]: merged };
+                localStorage.setItem("chai_food_logs_by_date", JSON.stringify(updated));
+                return updated;
+              }
+
+              // Case B: Server returned empty array, but user has existing local items
+              // CRITICAL: DO NOT overwrite or wipe out local user logs!
+              if (localItems.length > 0) {
+                return prev;
+              }
+
+              // Case C: Both are empty
+              const updated = { ...prev, [selectedDate]: [] };
               localStorage.setItem("chai_food_logs_by_date", JSON.stringify(updated));
               return updated;
             });
@@ -551,12 +575,23 @@ export default function TrackingMakananPage() {
   };
 
   // Delete item handler
-  const handleDeleteItem = (id: string) => {
+  const handleDeleteItem = async (id: string) => {
     const dayItems = logsByDate[selectedDate] || [];
     const updatedItems = dayItems.filter(item => item.id !== id);
     const updated = { ...logsByDate, [selectedDate]: updatedItems };
 
     persistLogs(updated);
+
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+      if (token) {
+        await fetch(`/api/food-log?id=${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {}
+
     setActionFeedback({
       type: "success",
       msg: "Item makanan berhasil dihapus dari tanggal ini.",

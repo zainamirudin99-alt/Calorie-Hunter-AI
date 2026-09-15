@@ -100,7 +100,10 @@ export async function GET(req: Request) {
         .gte("created_at", sevenDaysAgo.toISOString())
         .order("created_at", { ascending: true });
 
-      const todayStr = now.toISOString().split("T")[0];
+      const todayStrUtc = now.toISOString().split("T")[0];
+      const wibDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const todayStrWib = wibDate.toISOString().split("T")[0];
+
       let totalProteinG = 0;
       let totalCarbsG = 0;
       let totalFatG = 0;
@@ -116,8 +119,8 @@ export async function GET(req: Request) {
             histItem.calories += logKcal;
           }
 
-          // Process today's items
-          const isToday = logDateStr === todayStr;
+          // Process today's items (support UTC or WIB date matching)
+          const isToday = logDateStr === todayStrUtc || logDateStr === todayStrWib;
           if (isToday) {
             todayConsumedKcal += logKcal;
 

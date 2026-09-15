@@ -117,14 +117,17 @@ export default function DashboardPage() {
           if (Array.isArray(summaryData.today_food_items) && summaryData.today_food_items.length > 0) {
             setTodayFoodList(summaryData.today_food_items);
           } else {
-            // Check localStorage
-            const todayStr = new Date().toISOString().split("T")[0];
+            // Check localStorage with local date (matching scanner format YYYY-MM-DD)
+            const d = new Date();
+            const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            const utcTodayStr = d.toISOString().split("T")[0];
             const localLogs = localStorage.getItem("chai_food_logs_by_date");
             if (localLogs) {
               try {
                 const parsed = JSON.parse(localLogs);
-                if (Array.isArray(parsed[todayStr])) {
-                  setTodayFoodList(parsed[todayStr]);
+                const itemsForToday = parsed[localTodayStr] || parsed[utcTodayStr];
+                if (Array.isArray(itemsForToday)) {
+                  setTodayFoodList(itemsForToday);
                 }
               } catch {}
             }

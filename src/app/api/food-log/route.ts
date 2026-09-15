@@ -433,3 +433,30 @@ Jika ragu, berikan estimasi terbaik berdasarkan porsi makanan umum Indonesia dan
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const supabase = createServerClient(req);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ success: true, message: "Dihapus secara lokal" });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "ID item wajib disertakan" }, { status: 400 });
+    }
+
+    const admin = createAdminClient();
+    // Attempt delete from food_log_items first
+    await admin.from("food_log_items").delete().eq("id", id);
+    // Or if id matches a parent food_logs row
+    await admin.from("food_logs").delete().eq("id", id).eq("user_id", user.id);
+
+    return NextResponse.json({ success: true, message: "Item berhasil dihapus dari database" });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
