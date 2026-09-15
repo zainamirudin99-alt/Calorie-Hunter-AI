@@ -52,38 +52,43 @@ export default function AuthPage() {
         throw new Error(data.error || "Gagal melakukan proses autentikasi");
       }
 
-      // Step 1: Session stored exclusively in HttpOnly cookie by server.
-      // Store display username only for HUD header badge.
-      const authUser = data.user?.username || username;
+      // Extract access token from response
+      const token = data.session?.access_token || data.token;
+      if (token) {
+        const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `chai_auth_token=${token}; path=/; max-age=2592000; SameSite=Lax${secureFlag}`;
+        localStorage.setItem("chai_auth_token", token);
+      }
+
+      const authUser = data.user?.username || data.session?.user?.username || username;
       localStorage.setItem("chai_username", authUser);
 
       setSuccessMsg(
         mode === "register"
-          ? "Akun berhasil dibuat! Memeriksa status onboarding..."
-          : "Login berhasil! Memeriksa status misi..."
+          ? "Akun berhasil dibuat! Mengalihkan ke data diri biometrik..."
+          : "Login berhasil! Memverifikasi status misi..."
       );
 
-      // Step 3: Smart redirect based on onboarding completion status
+      // Check onboarding completion status using active token
       try {
-        const statusRes = await fetch("/api/auth/status");
+        const statusRes = await fetch("/api/auth/status", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
-          setTimeout(() => {
-            if (!statusData.has_profile) {
-              router.push("/profile");
-            } else if (!statusData.has_program) {
-              router.push("/program");
-            } else {
-              router.push("/");
-            }
-          }, 600);
+          let targetPath = "/";
+          if (!statusData.has_profile) {
+            targetPath = "/profile";
+          } else if (!statusData.has_program) {
+            targetPath = "/program";
+          }
+          window.location.href = targetPath;
           return;
         }
       } catch {}
 
-      setTimeout(() => {
-        router.push("/profile");
-      }, 700);
+      // Default safe redirect
+      window.location.href = "/profile";
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {

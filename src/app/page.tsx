@@ -42,26 +42,32 @@ export default function DashboardPage() {
   useEffect(() => {
     const verifyStatus = async () => {
       try {
-        const res = await fetch("/api/auth/status");
+        const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        const res = await fetch("/api/auth/status", { headers });
         if (res.status === 401) {
           // Invalid or expired session -> redirect to /auth
-          router.replace("/auth");
+          window.location.href = "/auth";
           return;
         }
         if (!res.ok) {
-          router.replace("/auth");
+          window.location.href = "/auth";
           return;
         }
 
         const data = await res.json();
         // Valid session, but profile is incomplete -> redirect to /profile
         if (!data.has_profile) {
-          router.replace("/profile");
+          window.location.href = "/profile";
           return;
         }
         // Valid session and profile complete, but no active program -> redirect to /program
         if (!data.has_program) {
-          router.replace("/program");
+          window.location.href = "/program";
           return;
         }
 
@@ -69,7 +75,7 @@ export default function DashboardPage() {
         setIsCheckingAuth(false);
 
         // Fetch dashboard telemetry
-        const summaryRes = await fetch("/api/dashboard/summary");
+        const summaryRes = await fetch("/api/dashboard/summary", { headers });
         if (summaryRes.ok) {
           const summaryData = await summaryRes.json();
           setTelemetry(summaryData);

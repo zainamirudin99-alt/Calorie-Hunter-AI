@@ -4,10 +4,10 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow public static assets and system files
+  // Allow public static assets and API routes (APIs handle their own status codes)
   if (
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/") ||
     pathname.includes(".") || // static files like images, favicon, etc.
     pathname === "/auth" ||
     pathname === "/login"
@@ -15,8 +15,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check auth cookie
-  const authToken = request.cookies.get("chai_auth_token")?.value;
+  // Check auth cookie or Authorization header
+  const authCookie = request.cookies.get("chai_auth_token")?.value;
+  const authHeader = request.headers.get("authorization");
+  const authToken = authCookie || authHeader;
 
   // If no auth token and trying to access root or protected pages, redirect to /auth
   if (!authToken) {

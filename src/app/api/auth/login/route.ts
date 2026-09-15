@@ -36,9 +36,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const isHttps = req.headers.get("x-forwarded-proto") === "https" || Boolean(req.url?.startsWith("https:"));
+
     const response = NextResponse.json({
       success: true,
       message: "Login berhasil",
+      token: data.session.access_token,
       session: {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
@@ -51,7 +54,7 @@ export async function POST(req: Request) {
 
     response.cookies.set("chai_auth_token", data.session.access_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttps,
       path: "/",
       maxAge: 60 * 60 * 24 * 30, // 30 days
       sameSite: "lax",

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 
 export async function GET(req: Request) {
   try {
@@ -13,22 +13,24 @@ export async function GET(req: Request) {
       );
     }
 
-    // Fetch user profile
-    const { data: profile } = await supabase
+    // Use admin client to reliably fetch user profile without RLS permission blockage
+    const admin = createAdminClient();
+    const { data: profile } = await admin
       .from("profiles")
       .select("*")
       .eq("id", user.id)
       .maybeSingle();
 
     // Fetch active program
-    const { data: program } = await supabase
+    const { data: program } = await admin
       .from("programs")
       .select("id, program_type, target_daily_kcal, start_date, end_date, status")
       .eq("user_id", user.id)
       .eq("status", "active")
       .maybeSingle();
 
-    const username = (profile?.username || user.user_metadata?.username || "").trim().toLowerCase();
+    const emailUsername = user.email ? user.email.split("@")[0] : "";
+    const username = (profile?.username || user.user_metadata?.username || emailUsername || "").trim().toLowerCase();
     const isAdmin = username === "zainamrdn99";
 
     const hasProfile = Boolean(

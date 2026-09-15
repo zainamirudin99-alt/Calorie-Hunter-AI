@@ -99,10 +99,12 @@ export default function ProgramSelectionPage() {
     setFeedback(null);
 
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       const res = await fetch("/api/programs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ program_type: selectedType }),
       });

@@ -32,30 +32,42 @@ export function createAdminClient() {
  * Reads Authorization header (Bearer token) if present to enforce RLS.
  */
 export function createServerClient(req?: Request) {
+  let token: string | undefined;
   const headers: Record<string, string> = {};
   
   if (req) {
     const authHeader = req.headers.get("authorization");
     if (authHeader) {
+      token = authHeader.replace(/^Bearer\s+/i, "").trim();
       headers["Authorization"] = authHeader;
     } else {
       const cookieHeader = req.headers.get("cookie");
       if (cookieHeader) {
         const match = cookieHeader.match(/(?:^|;\s*)chai_auth_token=([^;]+)/);
         if (match && match[1]) {
-          headers["Authorization"] = `Bearer ${decodeURIComponent(match[1])}`;
+          token = decodeURIComponent(match[1]).trim();
+          headers["Authorization"] = `Bearer ${token}`;
         }
       }
     }
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
     global: {
       headers,
     },
     auth: {
       autoRefreshToken: false,
       persistSession: false,
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
     },
   });
+
+  // Automatically pass token to getUser() so it validates directly against Supabase Auth
+  const originalGetUser = client.auth.getUser.bind(client.auth);
+  client.auth.getUser = (jwt?: string) => {
+    return originalGetUser(jwt || token);
+  };
+
+  return client;
 }

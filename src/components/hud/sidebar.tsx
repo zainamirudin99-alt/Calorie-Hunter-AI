@@ -76,7 +76,10 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
     }
 
     // Check if user is admin
-    fetch("/api/auth/status")
+    const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+    fetch("/api/auth/status", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then(res => res.json())
       .then(data => {
         if (data.isAdmin || data.username === "zainamrdn99") {
@@ -139,7 +142,7 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
     localStorage.removeItem("chai_username");
     document.cookie = "chai_auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     onClose();
-    router.push("/auth");
+    window.location.href = "/auth";
   };
 
   // Admin password reset handler

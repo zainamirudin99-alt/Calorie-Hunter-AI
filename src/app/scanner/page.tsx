@@ -335,8 +335,10 @@ export default function TrackingMakananPage() {
     }
 
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       const res = await fetch("/api/food-log", {
         method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 
@@ -429,10 +431,14 @@ export default function TrackingMakananPage() {
 
     setLoading(true);
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       // Commit to Database
       await fetch("/api/food-log", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           action: "save",
           items: editablePreviewItems,

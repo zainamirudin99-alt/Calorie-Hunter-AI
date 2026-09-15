@@ -124,7 +124,10 @@ export default function ProfilePage() {
       setSelectedModel(savedModel);
     }
 
-    fetch("/api/auth/status")
+    const token = localStorage.getItem("chai_auth_token");
+    fetch("/api/auth/status", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then(res => res.json())
       .then(data => {
         if (data.profile) {
@@ -179,12 +182,16 @@ export default function ProfilePage() {
     const checkedActivities = activities.filter(a => a.checked);
 
     try {
+      const token = localStorage.getItem("chai_auth_token");
+      const authHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
       // Save profile
       await fetch("/api/profile", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           full_name: fullName,
           gender,
@@ -201,9 +208,7 @@ export default function ProfilePage() {
         try {
           await fetch("/api/activities", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: authHeaders,
             body: JSON.stringify({
               activity_name: act.activity_name,
               frequency_per_week: act.frequency_per_week,
