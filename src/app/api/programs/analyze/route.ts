@@ -122,24 +122,103 @@ Berikan analisis mendalam dan objektif dalam Bahasa Indonesia taktis:
 
     let aiAnalysis: any = null;
 
-    if (process.env.GEMINI_API_KEY) {
+    // Multi-Provider Step 1: OpenAI Series (GPT-5.6 Luna, GPT-5 Thinking Mini)
+    if (selectedModel.startsWith("gpt-") && process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
       try {
-        const response = await gemini.models.generateContent({
-          model: selectedModel,
-          contents: [prompt],
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: aiProgramAnalysisGeminiSchema,
-            thinkingConfig: {
-              thinkingLevel: "HIGH" as any,
-            },
+        const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
+          body: JSON.stringify({
+            model: selectedModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o",
+            messages: [
+              {
+                role: "user",
+                content: `${prompt}\nOutput strictly valid JSON with format: {"program_type":"${program_type}","feasibility_status":"...","target_daily_kcal":${targetKcal},"weekly_projection":"...","protein_strategy":"...","macro_micro_policy":"...","actionable_tactics":["...","...","..."],"ai_verdict":"..."}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+          }),
         });
 
-        const text = response.text || "";
-        aiAnalysis = JSON.parse(text);
-      } catch (err: any) {
-        console.warn(`[Gemini ProgramAnalyze] Error with ${selectedModel}:`, err.message);
+        if (oaiRes.ok) {
+          const oaiData = await oaiRes.json();
+          const parsed = JSON.parse(oaiData.choices?.[0]?.message?.content || "{}");
+          if (parsed && parsed.feasibility_status) {
+            aiAnalysis = parsed;
+          }
+        }
+      } catch (oaiErr: any) {
+        console.warn(`[OpenAI ProgramAnalyze] Error with ${selectedModel}:`, oaiErr.message);
+      }
+    }
+
+    // Multi-Provider Step 2: DeepSeek Series (DeepSeek-V4-Flash, DeepSeek-V4-Pro)
+    if (!aiAnalysis && selectedModel.startsWith("deepseek-") && process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")) {
+      try {
+        const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: selectedModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat",
+            messages: [
+              {
+                role: "user",
+                content: `${prompt}\nOutput strictly valid JSON with format: {"program_type":"${program_type}","feasibility_status":"...","target_daily_kcal":${targetKcal},"weekly_projection":"...","protein_strategy":"...","macro_micro_policy":"...","actionable_tactics":["...","...","..."],"ai_verdict":"..."}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (dsRes.ok) {
+          const dsData = await dsRes.json();
+          const parsed = JSON.parse(dsData.choices?.[0]?.message?.content || "{}");
+          if (parsed && parsed.feasibility_status) {
+            aiAnalysis = parsed;
+          }
+        }
+      } catch (dsErr: any) {
+        console.warn(`[DeepSeek ProgramAnalyze] Error with ${selectedModel}:`, dsErr.message);
+      }
+    }
+
+    // Multi-Provider Step 3: Google Gemini Series with automated capacity cascade
+    if (!aiAnalysis && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("placeholder")) {
+      const candidateModels = [
+        selectedModel.startsWith("gemini-") ? selectedModel : PRIMARY_GEMINI_MODEL,
+        PRIMARY_GEMINI_MODEL,
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+      ].filter((m, i, arr) => arr.indexOf(m) === i);
+
+      for (const candidate of candidateModels) {
+        try {
+          const response = await gemini.models.generateContent({
+            model: candidate,
+            contents: [prompt],
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: aiProgramAnalysisGeminiSchema,
+            },
+          });
+
+          const text = response.text || "";
+          if (text) {
+            const parsed = JSON.parse(text);
+            if (parsed && parsed.feasibility_status) {
+              aiAnalysis = parsed;
+              break;
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[Gemini ProgramAnalyze] Error with ${candidate}:`, err.message);
+        }
       }
     }
 

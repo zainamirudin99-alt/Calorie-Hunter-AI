@@ -387,8 +387,80 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
     let modelUsed = effectiveModel;
     let isFallback = false;
 
-    // Step 5: Reliable Gemini call with fallback across models
-    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "placeholder-gemini-key") {
+    // Multi-Provider Step 1: OpenAI Series (GPT-5.6 Luna, GPT-5 Thinking Mini)
+    if (effectiveModel.startsWith("gpt-") && process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
+      try {
+        const userContent: any[] = [
+          {
+            type: "text",
+            text: `${promptText}\nOutput strictly valid JSON with format: {"items":[{"food_name":"...","estimated_weight_g":100,"calories_kcal":200,"macros":{"carbs_g":20,"protein_g":15,"fat_g":5,"fiber_g":2,"sugar_g":1},"micros":{"sodium_mg":150,"potassium_mg":150,"vitamin_c_mg":5},"confidence":0.9}],"total_calories_kcal":200}`,
+          },
+        ];
+        if (base64Image) {
+          userContent.push({
+            type: "image_url",
+            image_url: { url: `data:${imageMimeType};base64,${base64Image}` },
+          });
+        }
+
+        const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: effectiveModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o",
+            messages: [{ role: "user", content: userContent }],
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (oaiRes.ok) {
+          const oaiData = await oaiRes.json();
+          const parsed = JSON.parse(oaiData.choices?.[0]?.message?.content || "{}");
+          if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+            aiResult = parsed;
+            modelUsed = effectiveModel;
+          }
+        }
+      } catch (oaiErr: any) {
+        console.warn(`[OpenAI FoodScan] Model ${effectiveModel} failed, trying fallback:`, oaiErr.message);
+      }
+    }
+
+    // Multi-Provider Step 2: DeepSeek Series (DeepSeek-V4-Flash, DeepSeek-V4-Pro)
+    if (!aiResult && effectiveModel.startsWith("deepseek-") && process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")) {
+      try {
+        const dsPrompt = `${promptText}\nOutput strictly valid JSON with format: {"items":[{"food_name":"...","estimated_weight_g":100,"calories_kcal":200,"macros":{"carbs_g":20,"protein_g":15,"fat_g":5,"fiber_g":2,"sugar_g":1},"micros":{"sodium_mg":150,"potassium_mg":150,"vitamin_c_mg":5},"confidence":0.9}],"total_calories_kcal":200}`;
+        const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: effectiveModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat",
+            messages: [{ role: "user", content: dsPrompt }],
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (dsRes.ok) {
+          const dsData = await dsRes.json();
+          const parsed = JSON.parse(dsData.choices?.[0]?.message?.content || "{}");
+          if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+            aiResult = parsed;
+            modelUsed = effectiveModel;
+          }
+        }
+      } catch (dsErr: any) {
+        console.warn(`[DeepSeek FoodScan] Model ${effectiveModel} failed, trying fallback:`, dsErr.message);
+      }
+    }
+
+    // Multi-Provider Step 3: Google Gemini call with model cascade fallback
+    if (!aiResult && process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "placeholder-gemini-key") {
       const contents: any[] = [];
       if (base64Image) {
         contents.push({
@@ -401,9 +473,12 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
       contents.push(promptText);
 
       // Models to try in priority order
-      const candidateModels = [effectiveModel, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL, "gemini-2.5-flash"].filter(
-        (m, i, arr) => arr.indexOf(m) === i
-      );
+      const candidateModels = [
+        effectiveModel.startsWith("gemini-") ? effectiveModel : PRIMARY_GEMINI_MODEL,
+        PRIMARY_GEMINI_MODEL,
+        FALLBACK_GEMINI_MODEL,
+        "gemini-2.5-flash"
+      ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentCandidate of candidateModels) {
         try {
@@ -420,7 +495,7 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
           if (text) {
             aiResult = JSON.parse(text);
             if (aiResult && Array.isArray(aiResult.items) && aiResult.items.length > 0) {
-              modelUsed = currentCandidate;
+              modelUsed = effectiveModel.startsWith("gemini-") ? currentCandidate : effectiveModel;
               break;
             }
           }

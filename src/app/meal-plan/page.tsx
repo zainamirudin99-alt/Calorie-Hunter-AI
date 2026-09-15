@@ -30,7 +30,7 @@ export default function MealPlanPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isFallback, setIsFallback] = useState(false);
   const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
-  const [modelUsed, setModelUsed] = useState<string>("gemini-3.8-flash");
+  const [modelUsed, setModelUsed] = useState<string>("gemini-2.5-flash");
 
   const fetchMealPlan = async () => {
     setLoading(true);

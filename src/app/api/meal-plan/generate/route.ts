@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       age: 25,
       gender: "male",
       activity_level: "moderate",
-      preferred_gemini_model: "gemini-3.8-flash",
+      preferred_gemini_model: "gemini-2.5-flash",
     };
     let program = {
       id: "demo-prog",
@@ -143,7 +143,7 @@ export async function POST(req: Request) {
     const selectedModel = 
       requestBody?.preferred_model ||
       profile.preferred_gemini_model ||
-      (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : "gemini-3.8-flash");
+      (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : "gemini-2.5-flash");
 
     const prompt = `
 Anda adalah AI Ahli Gizi & Nutrisi Olahraga untuk sistem CALORIE HUNTER AI.
@@ -163,33 +163,95 @@ Instruksi menu:
     let isFallback = false;
     let fallbackMessage: string | null = null;
 
-    // Step 4: Reliable Gemini call with thinking_level HIGH, responseSchema, and 3x retry + backoff
-    if (process.env.GEMINI_API_KEY) {
-      for (let attempt = 1; attempt <= 3; attempt++) {
+    // Step 4: Multi-Provider AI Call with cascade failover
+    // 4A: OpenAI Series (GPT-5.6 Luna, GPT-5 Thinking Mini)
+    if (selectedModel.startsWith("gpt-") && process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
+      try {
+        const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: selectedModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (oaiRes.ok) {
+          const oaiData = await oaiRes.json();
+          const parsed = JSON.parse(oaiData.choices?.[0]?.message?.content || "{}");
+          const validated = mealPlanResponseSchema.safeParse(parsed);
+          if (validated.success) {
+            generatedJson = validated.data;
+          }
+        }
+      } catch (oaiErr: any) {
+        console.warn(`[OpenAI MealPlan] Error with ${selectedModel}:`, oaiErr.message);
+      }
+    }
+
+    // 4B: DeepSeek Series (DeepSeek-V4-Flash, DeepSeek-V4-Pro)
+    if (!generatedJson && selectedModel.startsWith("deepseek-") && process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")) {
+      try {
+        const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: selectedModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (dsRes.ok) {
+          const dsData = await dsRes.json();
+          const parsed = JSON.parse(dsData.choices?.[0]?.message?.content || "{}");
+          const validated = mealPlanResponseSchema.safeParse(parsed);
+          if (validated.success) {
+            generatedJson = validated.data;
+          }
+        }
+      } catch (dsErr: any) {
+        console.warn(`[DeepSeek MealPlan] Error with ${selectedModel}:`, dsErr.message);
+      }
+    }
+
+    // 4C: Google Gemini Series (with automatic capacity cascade without thinkingLevel HIGH)
+    if (!generatedJson && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("placeholder")) {
+      const candidateModels = [
+        selectedModel.startsWith("gemini-") ? selectedModel : "gemini-2.5-flash",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+      ].filter((m, i, arr) => arr.indexOf(m) === i);
+
+      for (const currentModel of candidateModels) {
         try {
           const response = await gemini.models.generateContent({
-            model: selectedModel,
+            model: currentModel,
             contents: prompt,
             config: {
               responseMimeType: "application/json",
               responseSchema: mealPlanGeminiSchema,
-              thinkingConfig: {
-                thinkingLevel: "HIGH" as any,
-              },
             },
           });
 
           const text = response.text || "";
-          const parsed = JSON.parse(text);
-          const validated = mealPlanResponseSchema.parse(parsed);
-          generatedJson = validated;
-          break; // Success, exit retry loop
-        } catch (err: any) {
-          console.warn(`[Gemini MealPlan] Attempt ${attempt} with ${selectedModel} failed:`, err.message);
-          if (attempt < 3) {
-            // Exponential backoff: 1s, 2s
-            await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          if (text) {
+            const parsed = JSON.parse(text);
+            const validated = mealPlanResponseSchema.safeParse(parsed);
+            if (validated.success) {
+              generatedJson = validated.data;
+              break;
+            }
           }
+        } catch (err: any) {
+          console.warn(`[Gemini MealPlan] Model ${currentModel} failed:`, err.message);
         }
       }
     }

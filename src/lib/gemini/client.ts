@@ -9,8 +9,8 @@ const apiKey = process.env.GEMINI_API_KEY || "";
 export const gemini = new GoogleGenAI({ apiKey });
 
 /**
- * Primary model: gemini-3.8-flash
- * Fallback model: gemini-2.5-flash
+ * Primary model: gemini-2.5-flash
+ * Fallback model: gemini-2.0-flash
  */
-export const PRIMARY_GEMINI_MODEL = "gemini-3.8-flash";
-export const FALLBACK_GEMINI_MODEL = "gemini-2.5-flash";
+export const PRIMARY_GEMINI_MODEL = "gemini-2.5-flash";
+export const FALLBACK_GEMINI_MODEL = "gemini-2.0-flash";

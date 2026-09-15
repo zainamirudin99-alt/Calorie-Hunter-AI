@@ -31,12 +31,7 @@ interface TacticalSidebarProps {
   onClose?: () => void;
 }
 
-const GEMINI_MODELS = [
-  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (Default)", badge: "RECOMMENDED" },
-  { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash", badge: "FAST" },
-  { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", badge: "LEGACY" },
-  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)", badge: "PREVIEW" },
-];
+import { GEMINI_MODELS, DEFAULT_MODEL_ID } from "@/lib/gemini/models";
 
 export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: TacticalSidebarProps = {}) {
   const pathname = usePathname();
@@ -48,7 +43,7 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
   const onClose = propOnClose || closeSidebar;
 
   // AI Model & Health State
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.8-flash");
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_MODEL_ID);
   const [aiHealth, setAiHealth] = useState<{
     checking: boolean;
     status: "online" | "rate_limited" | "error" | "no_key" | null;

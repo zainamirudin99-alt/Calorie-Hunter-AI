@@ -70,7 +70,7 @@ export async function GET(req: Request) {
       profile: profile || null,
       program: program || null,
       companion,
-      preferred_gemini_model: profile?.preferred_gemini_model || "gemini-3.8-flash",
+      preferred_gemini_model: profile?.preferred_gemini_model || "gemini-2.5-flash",
     });
   } catch (error: any) {
     return NextResponse.json(

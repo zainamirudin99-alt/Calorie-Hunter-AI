@@ -29,13 +29,7 @@ import {
   AlertTriangle,
   ShieldAlert
 } from "lucide-react";
-
-const GEMINI_MODELS = [
-  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (Default)", badge: "RECOMMENDED" },
-  { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash", badge: "FAST" },
-  { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", badge: "LEGACY" },
-  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)", badge: "PREVIEW" },
-];
+import { GEMINI_MODELS, getGeminiModelById, DEFAULT_MODEL_ID } from "@/lib/gemini/models";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -49,7 +43,7 @@ export default function ProfilePage() {
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
 
   // AI Model & Health State
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.8-flash");
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_MODEL_ID);
   const [aiHealth, setAiHealth] = useState<{
     checking: boolean;
     status: "online" | "rate_limited" | "error" | "no_key" | null;
@@ -744,29 +738,52 @@ export default function ProfilePage() {
                     ENGINE AI & CEK KESIAPAN
                   </h2>
                 </div>
-                <span className="font-mono text-[9px] px-1.5 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold">
-                  GEMINI 3
+                <span className="font-mono text-[9px] px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold uppercase">
+                  {getGeminiModelById(selectedModel).badge} • {getGeminiModelById(selectedModel).provider.toUpperCase()}
                 </span>
               </div>
 
               <p className="font-mono text-xs text-outline leading-relaxed">
-                Pilih model kecerdasan buatan yang digunakan untuk pemindaian nutrisi dan perancangan menu makan, serta periksa ketersediaan layanannya secara live.
+                Pilih model kecerdasan buatan untuk pemindaian nutrisi dan perancangan menu makan (Google Gemini, OpenAI, atau DeepSeek), serta periksa kesiapan koneksi API secara live.
               </p>
 
-              {/* Model Select */}
-              <div className="space-y-1.5 font-mono text-xs">
-                <label className="text-outline uppercase text-[10px] block">Model Aktif:</label>
+              {/* Model Select grouped by Provider */}
+              <div className="space-y-2 font-mono text-xs">
+                <label className="text-outline uppercase text-[10px] block">Pilih Model Aktif:</label>
                 <select
                   value={selectedModel}
                   onChange={(e) => handleModelChange(e.target.value)}
                   className="w-full px-3 py-2 rounded hud-card-inner border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary cursor-pointer"
                 >
-                  {GEMINI_MODELS.map((m) => (
-                    <option key={m.id} value={m.id} className="bg-slate-900 text-white">
-                      {m.label}
-                    </option>
-                  ))}
+                  <optgroup label="GOOGLE GEMINI SERIES (DEFAULT)" className="bg-slate-900 text-cyan-400 font-bold">
+                    {GEMINI_MODELS.filter(m => m.provider === "google").map((m) => (
+                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-normal">
+                        {m.label} — {m.badge}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="OPENAI SERIES" className="bg-slate-900 text-emerald-400 font-bold">
+                    {GEMINI_MODELS.filter(m => m.provider === "openai").map((m) => (
+                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-normal">
+                        {m.label} — {m.badge}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="DEEPSEEK SERIES" className="bg-slate-900 text-blue-400 font-bold">
+                    {GEMINI_MODELS.filter(m => m.provider === "deepseek").map((m) => (
+                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-normal">
+                        {m.label} — {m.badge}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
+
+                <div className="p-2 rounded hud-card-inner border hud-border text-[11px] space-y-1">
+                  <span className="text-slate-300 block">{getGeminiModelById(selectedModel).description}</span>
+                  <span className="text-[10px] text-amber-400 font-mono block">
+                    Kebutuhan Variabel Vercel: <strong>{getGeminiModelById(selectedModel).envKeyName}</strong>
+                  </span>
+                </div>
               </div>
 
               {/* Cek AI Button */}
@@ -787,6 +804,8 @@ export default function ProfilePage() {
                     ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-300"
                     : aiHealth.status === "rate_limited"
                     ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
+                    : aiHealth.status === "no_key"
+                    ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
                     : "bg-red-500/10 border border-red-500/40 text-red-300"
                 }`}>
                   <div className="flex items-center justify-between font-bold">
@@ -799,7 +818,7 @@ export default function ProfilePage() {
                         {aiHealth.status === "online" && "AI AKTIF & SIAP DIGUNAKAN"}
                         {aiHealth.status === "rate_limited" && "BATAS KUOTA AI TERCAPAI"}
                         {aiHealth.status === "error" && "AI TIDAK DAPAT DIAKSES"}
-                        {aiHealth.status === "no_key" && "GEMINI_API_KEY TIDAK TERDETEKSI"}
+                        {aiHealth.status === "no_key" && `API KEY ${getGeminiModelById(selectedModel).envKeyName} BELUM TERDETEKSI`}
                       </span>
                     </div>
                     {aiHealth.latency_ms !== undefined && (
