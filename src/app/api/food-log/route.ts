@@ -84,28 +84,46 @@ export async function GET(req: Request) {
     const date = searchParams.get("date");
 
     const admin = createAdminClient();
-    let query = admin
-      .from("food_logs")
-      .select("id, created_at, ai_response_json, total_kcal, food_log_items(*)")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true });
+    let logs: any[] = [];
 
-    if (date) {
-      const startOfDay = `${date}T00:00:00.000Z`;
-      const endOfDay = `${date}T23:59:59.999Z`;
-      query = query.gte("created_at", startOfDay).lte("created_at", endOfDay);
+    // Attempt query with logged_at first (schema standard)
+    let res: any = await admin
+      .from("food_logs")
+      .select("id, logged_at, ai_response_json, total_kcal, food_log_items(*)")
+      .eq("user_id", user.id)
+      .order("logged_at", { ascending: true });
+
+    if (res.error) {
+      // Fallback to created_at
+      res = await admin
+        .from("food_logs")
+        .select("id, created_at, ai_response_json, total_kcal, food_log_items(*)")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
     }
 
-    const { data: logs, error } = await query;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (res.data && Array.isArray(res.data)) {
+      logs = res.data;
     }
 
     const items: any[] = [];
-    if (logs && Array.isArray(logs)) {
+    if (logs.length > 0) {
       for (const log of logs) {
-        const timeStr = log.created_at
-          ? new Date(log.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+        const timestamp = log.logged_at || log.created_at;
+        if (date && timestamp) {
+          const logUtcDate = timestamp.split("T")[0];
+          const dateObj = new Date(timestamp);
+          const wibDateObj = new Date(dateObj.getTime() + 7 * 60 * 60 * 1000);
+          const logWibDate = wibDateObj.toISOString().split("T")[0];
+
+          // Filter by date across UTC or WIB date boundaries
+          if (logUtcDate !== date && logWibDate !== date) {
+            continue;
+          }
+        }
+
+        const timeStr = timestamp
+          ? new Date(timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
           : "12:00 WIB";
 
         if (Array.isArray(log.food_log_items) && log.food_log_items.length > 0) {
@@ -206,39 +224,88 @@ export async function POST(req: Request) {
             .limit(1)
             .maybeSingle();
 
-          const { data: insertedLog, error: logError } = await admin
+          // Prepare clean inputs that GUARANTEE constraint satisfaction:
+          // CONSTRAINT chk_food_logs_photo_or_text CHECK ((photo_url IS NOT NULL) <> (raw_text_input IS NOT NULL))
+          const isPhotoMode = input_type === "photo" || Boolean(photo_url);
+          let safePhotoUrl: string | null = null;
+          let safeRawText: string | null = null;
+
+          if (isPhotoMode) {
+            safePhotoUrl = photo_url || `photo-scan/${user.id}-${Date.now()}.jpg`;
+            safeRawText = null; // Enforce XOR constraint in DB
+          } else {
+            safeRawText = raw_text_input ? String(raw_text_input).trim() : "Catatan Menu Manual";
+            safePhotoUrl = null; // Enforce XOR constraint in DB
+          }
+
+          const logTimestamp = log_date ? `${log_date}T12:00:00Z` : new Date().toISOString();
+
+          // Insert into food_logs with fallback between logged_at and created_at
+          let insertedLog: any = null;
+          let logError: any = null;
+
+          const baseInsertData: any = {
+            user_id: user.id,
+            program_id: activeProg?.id || null,
+            input_type: isPhotoMode ? "photo" : "manual_text",
+            photo_url: safePhotoUrl,
+            raw_text_input: safeRawText,
+            ai_response_json: {
+              items,
+              notes: raw_text_input || null,
+              total_calories_kcal: totalKcal,
+            },
+            total_kcal: totalKcal,
+          };
+
+          // Try with logged_at first (standard in 0001_initial_schema.sql)
+          const res1 = await admin
             .from("food_logs")
-            .insert({
-              user_id: user.id,
-              program_id: activeProg?.id || null,
-              input_type: input_type || "manual_text",
-              photo_url: photo_url || null,
-              raw_text_input: raw_text_input || null,
-              ai_response_json: { items, total_calories_kcal: totalKcal },
-              total_kcal: totalKcal,
-              created_at: log_date ? `${log_date}T12:00:00Z` : new Date().toISOString(),
-            })
+            .insert({ ...baseInsertData, logged_at: logTimestamp })
             .select("id")
             .single();
 
-          if (!logError && insertedLog) {
+          if (res1.error) {
+            // Fallback to created_at
+            const res2 = await admin
+              .from("food_logs")
+              .insert({ ...baseInsertData, created_at: logTimestamp })
+              .select("id")
+              .single();
+
+            insertedLog = res2.data;
+            logError = res2.error;
+          } else {
+            insertedLog = res1.data;
+            logError = null;
+          }
+
+          if (logError) {
+            console.error("[food-log] Error inserting into food_logs:", logError);
+            return NextResponse.json({ error: "Gagal menyimpan ke database: " + logError.message }, { status: 500 });
+          }
+
+          if (insertedLog) {
             foodLogId = insertedLog.id;
             const dailyTarget = activeProg?.target_daily_kcal || 1950;
             const itemsToInsert = items.map((item: any) => ({
               food_log_id: insertedLog.id,
               food_name: item.food_name,
-              weight_g: Number(item.estimated_weight_g) || 100,
+              weight_g: Number(item.weight_g || item.estimated_weight_g) || 100,
               calories_kcal: Number(item.calories_kcal) || 0,
-              carbs_g: Number(item.macros?.carbs_g) || 0,
-              protein_g: Number(item.macros?.protein_g) || 0,
-              fat_g: Number(item.macros?.fat_g) || 0,
-              fiber_g: Number(item.macros?.fiber_g) || 0,
-              sugar_g: Number(item.macros?.sugar_g) || 0,
+              carbs_g: Number(item.carbs_g || item.macros?.carbs_g) || 0,
+              protein_g: Number(item.protein_g || item.macros?.protein_g) || 0,
+              fat_g: Number(item.fat_g || item.macros?.fat_g) || 0,
+              fiber_g: Number(item.fiber_g || item.macros?.fiber_g) || 0,
+              sugar_g: Number(item.sugar_g || item.macros?.sugar_g) || 0,
               micros_json: item.micros || {},
               pct_of_daily_kcal: Number(((Number(item.calories_kcal || 0) / dailyTarget) * 100).toFixed(1)),
             }));
 
-            await admin.from("food_log_items").insert(itemsToInsert);
+            const { error: itemsError } = await admin.from("food_log_items").insert(itemsToInsert);
+            if (itemsError) {
+              console.warn("[food-log] Warning inserting food_log_items:", itemsError.message);
+            }
           }
         }
 

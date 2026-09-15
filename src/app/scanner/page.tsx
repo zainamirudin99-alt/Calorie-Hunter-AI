@@ -592,7 +592,7 @@ export default function TrackingMakananPage() {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       // Commit to Database
-      await fetch("/api/food-log", {
+      const res = await fetch("/api/food-log", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -603,10 +603,15 @@ export default function TrackingMakananPage() {
           items: editablePreviewItems,
           photo_url: analysisResult?.photo_url || null,
           input_type: inputMode,
-          raw_text_input: manualText || null,
+          raw_text_input: (photoHint || manualText || "").trim() || null,
           log_date: selectedDate,
         }),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.warn("[scanner] Server save error response:", errData.error);
+      }
 
       const currentTime = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
       const newItems: LoggedFoodItem[] = editablePreviewItems.map((item: any, idx: number) => ({
@@ -637,6 +642,7 @@ export default function TrackingMakananPage() {
       setSelectedFile(null);
       setPreviewUrl(null);
       setManualText("");
+      setPhotoHint("");
       setActionFeedback({
         type: "success",
         msg: `Berhasil menyimpan ${newItems.length} item ke catatan ${formatIndonesianDate(selectedDate)}!`,

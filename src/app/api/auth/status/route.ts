@@ -15,6 +15,16 @@ export async function GET(req: Request) {
 
     // Use admin client to reliably fetch user profile without RLS permission blockage
     const admin = createAdminClient();
+
+    // Fetch authoritative user from DB to bypass stale JWT claims on other devices (e.g. mobile vs desktop)
+    let freshUser = user;
+    try {
+      const { data: dbUser } = await admin.auth.admin.getUserById(user.id);
+      if (dbUser?.user) {
+        freshUser = dbUser.user;
+      }
+    } catch {}
+
     const { data: profile } = await admin
       .from("profiles")
       .select("*")
@@ -30,7 +40,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     const emailUsername = user.email ? user.email.split("@")[0] : "";
-    const username = (profile?.username || user.user_metadata?.username || emailUsername || "").trim().toLowerCase();
+    const username = (profile?.username || freshUser.user_metadata?.username || emailUsername || "").trim().toLowerCase();
     const isAdmin = username === "zainamrdn99";
 
     const hasProfile = Boolean(
@@ -43,6 +53,13 @@ export async function GET(req: Request) {
 
     const hasProgram = Boolean(program && program.id);
 
+    // Resolve freshest companion data from auth metadata or profile table
+    const companion = 
+      freshUser.user_metadata?.companion || 
+      user.user_metadata?.companion || 
+      (profile as any)?.companion_data || 
+      ((profile as any)?.avatar_url ? { character_name: "TITAN PROTO-GODZILLA", avatar_url: (profile as any).avatar_url } : null);
+
     return NextResponse.json({
       authenticated: true,
       user_id: user.id,
@@ -52,7 +69,7 @@ export async function GET(req: Request) {
       has_program: hasProgram,
       profile: profile || null,
       program: program || null,
-      companion: user.user_metadata?.companion || null,
+      companion,
       preferred_gemini_model: profile?.preferred_gemini_model || "gemini-3.8-flash",
     });
   } catch (error: any) {

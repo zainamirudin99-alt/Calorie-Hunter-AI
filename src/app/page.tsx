@@ -110,9 +110,9 @@ export default function DashboardPage() {
         setIsCheckingAuth(false);
 
         // Synchronize cloud companion so Desktop and Mobile are 100% in sync
-        if (data.companion && data.companion.avatar_url) {
-          setCompanionName(data.companion.character_name || defaultCompanionName);
-          setCompanionAvatar(data.companion.avatar_url);
+        if (data.companion && (data.companion.avatar_url || data.companion.character_name)) {
+          if (data.companion.character_name) setCompanionName(data.companion.character_name);
+          if (data.companion.avatar_url) setCompanionAvatar(data.companion.avatar_url);
           localStorage.setItem("chai_companion_data", JSON.stringify(data.companion));
         }
 
@@ -123,6 +123,14 @@ export default function DashboardPage() {
           setTelemetry(summaryData);
           if (Array.isArray(summaryData.today_food_items) && summaryData.today_food_items.length > 0) {
             setTodayFoodList(summaryData.today_food_items);
+            // Mirror server food items to local device storage for offline and fast render
+            const d = new Date();
+            const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            try {
+              const currentLocal = JSON.parse(localStorage.getItem("chai_food_logs_by_date") || "{}");
+              currentLocal[localTodayStr] = summaryData.today_food_items;
+              localStorage.setItem("chai_food_logs_by_date", JSON.stringify(currentLocal));
+            } catch {}
           } else {
             // Check localStorage with local date (matching scanner format YYYY-MM-DD)
             const d = new Date();
@@ -153,7 +161,7 @@ export default function DashboardPage() {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       if (token) {
-        await fetch("/api/companion/sync", {
+        const res = await fetch("/api/companion/sync", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -161,11 +169,16 @@ export default function DashboardPage() {
           },
           body: JSON.stringify(data),
         });
+        if (res.ok) {
+          const resData = await res.json();
+          return resData;
+        }
       }
     } catch {}
+    return null;
   };
 
-  const handleSaveUploadedCompanion = () => {
+  const handleSaveUploadedCompanion = async () => {
     if (!previewUploadUrl) {
       setCompanionStatusMsg({ type: "error", text: "Pilih file gambar terlebih dahulu." });
       return;
@@ -178,8 +191,14 @@ export default function DashboardPage() {
     setCompanionName(finalName);
     setCompanionAvatar(previewUploadUrl);
     localStorage.setItem("chai_companion_data", JSON.stringify(data));
-    syncCompanionToCloud(data);
     setCompanionStatusMsg({ type: "success", text: "Companion berhasil diperbarui dan disinkronkan ke cloud!" });
+
+    const synced = await syncCompanionToCloud(data);
+    if (synced?.companion?.avatar_url) {
+      setCompanionAvatar(synced.companion.avatar_url);
+      localStorage.setItem("chai_companion_data", JSON.stringify(synced.companion));
+    }
+
     setTimeout(() => {
       setIsCompanionModalOpen(false);
       setCompanionStatusMsg(null);
@@ -224,7 +243,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleApplyAiCompanion = () => {
+  const handleApplyAiCompanion = async () => {
     if (!aiGeneratedUrl) return;
     const finalName = customNameInput.trim() || companionName;
     const data = {
@@ -235,8 +254,14 @@ export default function DashboardPage() {
     setCompanionName(finalName);
     setCompanionAvatar(aiGeneratedUrl);
     localStorage.setItem("chai_companion_data", JSON.stringify(data));
-    syncCompanionToCloud(data);
     setCompanionStatusMsg({ type: "success", text: "Companion AI berhasil diterapkan dan disinkronkan!" });
+
+    const synced = await syncCompanionToCloud(data);
+    if (synced?.companion?.avatar_url) {
+      setCompanionAvatar(synced.companion.avatar_url);
+      localStorage.setItem("chai_companion_data", JSON.stringify(synced.companion));
+    }
+
     setTimeout(() => {
       setIsCompanionModalOpen(false);
       setCompanionStatusMsg(null);

@@ -93,12 +93,23 @@ export async function GET(req: Request) {
       sevenDaysAgo.setDate(now.getDate() - 7);
       sevenDaysAgo.setHours(0, 0, 0, 0);
 
-      const { data: foodLogs } = await admin
+      let foodLogsRes: any = await admin
         .from("food_logs")
-        .select("id, created_at, total_kcal, ai_response_json, food_log_items(*)")
+        .select("id, logged_at, total_kcal, ai_response_json, food_log_items(*)")
         .eq("user_id", user.id)
-        .gte("created_at", sevenDaysAgo.toISOString())
-        .order("created_at", { ascending: true });
+        .gte("logged_at", sevenDaysAgo.toISOString())
+        .order("logged_at", { ascending: true });
+
+      if (foodLogsRes.error && foodLogsRes.error.message?.includes("logged_at")) {
+        foodLogsRes = await admin
+          .from("food_logs")
+          .select("id, created_at, total_kcal, ai_response_json, food_log_items(*)")
+          .eq("user_id", user.id)
+          .gte("created_at", sevenDaysAgo.toISOString())
+          .order("created_at", { ascending: true });
+      }
+
+      const foodLogs = foodLogsRes.data;
 
       const todayStrUtc = now.toISOString().split("T")[0];
       const wibDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
@@ -110,22 +121,25 @@ export async function GET(req: Request) {
 
       if (foodLogs && Array.isArray(foodLogs)) {
         for (const log of foodLogs) {
-          const logDateStr = log.created_at ? log.created_at.split("T")[0] : "";
+          const timestamp = log.logged_at || log.created_at || "";
+          const logDateUtc = timestamp ? timestamp.split("T")[0] : "";
+          const dateObj = timestamp ? new Date(timestamp) : null;
+          const logDateWib = dateObj ? new Date(dateObj.getTime() + 7 * 60 * 60 * 1000).toISOString().split("T")[0] : "";
           const logKcal = Number(log.total_kcal) || 0;
 
           // Add to dailyHistory if matching date
-          const histItem = dailyHistory.find((h) => h.dateStr === logDateStr);
+          const histItem = dailyHistory.find((h) => h.dateStr === logDateUtc || h.dateStr === logDateWib);
           if (histItem) {
             histItem.calories += logKcal;
           }
 
           // Process today's items (support UTC or WIB date matching)
-          const isToday = logDateStr === todayStrUtc || logDateStr === todayStrWib;
+          const isToday = logDateUtc === todayStrUtc || logDateWib === todayStrWib || logDateUtc === todayStrWib;
           if (isToday) {
             todayConsumedKcal += logKcal;
 
-            const timeStr = log.created_at
-              ? new Date(log.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+            const timeStr = timestamp
+              ? new Date(timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
               : "12:00 WIB";
 
             if (Array.isArray(log.food_log_items) && log.food_log_items.length > 0) {
