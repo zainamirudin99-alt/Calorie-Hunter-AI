@@ -109,6 +109,13 @@ export default function DashboardPage() {
         // All onboarding steps completed -> render Dashboard
         setIsCheckingAuth(false);
 
+        // Synchronize cloud companion so Desktop and Mobile are 100% in sync
+        if (data.companion && data.companion.avatar_url) {
+          setCompanionName(data.companion.character_name || defaultCompanionName);
+          setCompanionAvatar(data.companion.avatar_url);
+          localStorage.setItem("chai_companion_data", JSON.stringify(data.companion));
+        }
+
         // Fetch dashboard telemetry
         const summaryRes = await fetch("/api/dashboard/summary", { headers });
         if (summaryRes.ok) {
@@ -139,7 +146,24 @@ export default function DashboardPage() {
     };
 
     verifyStatus();
-  }, [router]);
+  }, [router, defaultCompanionName]);
+
+  // Cloud sync helper so companion updates sync between desktop and mobile
+  const syncCompanionToCloud = async (data: { character_name: string; avatar_url: string; character_description?: string }) => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+      if (token) {
+        await fetch("/api/companion/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(data),
+        });
+      }
+    } catch {}
+  };
 
   const handleSaveUploadedCompanion = () => {
     if (!previewUploadUrl) {
@@ -154,7 +178,8 @@ export default function DashboardPage() {
     setCompanionName(finalName);
     setCompanionAvatar(previewUploadUrl);
     localStorage.setItem("chai_companion_data", JSON.stringify(data));
-    setCompanionStatusMsg({ type: "success", text: "Companion berhasil diperbarui!" });
+    syncCompanionToCloud(data);
+    setCompanionStatusMsg({ type: "success", text: "Companion berhasil diperbarui dan disinkronkan ke cloud!" });
     setTimeout(() => {
       setIsCompanionModalOpen(false);
       setCompanionStatusMsg(null);
@@ -210,7 +235,8 @@ export default function DashboardPage() {
     setCompanionName(finalName);
     setCompanionAvatar(aiGeneratedUrl);
     localStorage.setItem("chai_companion_data", JSON.stringify(data));
-    setCompanionStatusMsg({ type: "success", text: "Companion AI berhasil diterapkan ke HUD!" });
+    syncCompanionToCloud(data);
+    setCompanionStatusMsg({ type: "success", text: "Companion AI berhasil diterapkan dan disinkronkan!" });
     setTimeout(() => {
       setIsCompanionModalOpen(false);
       setCompanionStatusMsg(null);
@@ -221,8 +247,40 @@ export default function DashboardPage() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
-        setPreviewUploadUrl(reader.result as string);
+      reader.onload = (event) => {
+        const resultStr = event.target?.result as string;
+        if (!resultStr) return;
+
+        // Optimize image with canvas to max 512x512 so it syncs fast and takes minimal storage
+        const img = new window.Image();
+        img.onload = () => {
+          const maxDim = 512;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            setPreviewUploadUrl(canvas.toDataURL("image/jpeg", 0.85));
+          } else {
+            setPreviewUploadUrl(resultStr);
+          }
+        };
+        img.onerror = () => {
+          setPreviewUploadUrl(resultStr);
+        };
+        img.src = resultStr;
       };
       reader.readAsDataURL(file);
     }

@@ -52,6 +52,7 @@ export async function GET(req: Request) {
       has_program: hasProgram,
       profile: profile || null,
       program: program || null,
+      companion: user.user_metadata?.companion || null,
       preferred_gemini_model: profile?.preferred_gemini_model || "gemini-3.8-flash",
     });
   } catch (error: any) {
