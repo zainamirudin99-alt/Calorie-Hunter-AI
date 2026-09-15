@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from "@/lib/gemini/client";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 const nutritionItemSchema = z.object({
@@ -71,6 +71,91 @@ const foodScanGeminiSchema = {
   required: ["items", "total_calories_kcal"],
 };
 
+export async function GET(req: Request) {
+  try {
+    const supabase = createServerClient(req);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ success: true, items: [] });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const date = searchParams.get("date");
+
+    const admin = createAdminClient();
+    let query = admin
+      .from("food_logs")
+      .select("id, created_at, ai_response_json, total_kcal, food_log_items(*)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+
+    if (date) {
+      const startOfDay = `${date}T00:00:00.000Z`;
+      const endOfDay = `${date}T23:59:59.999Z`;
+      query = query.gte("created_at", startOfDay).lte("created_at", endOfDay);
+    }
+
+    const { data: logs, error } = await query;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const items: any[] = [];
+    if (logs && Array.isArray(logs)) {
+      for (const log of logs) {
+        const timeStr = log.created_at
+          ? new Date(log.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+          : "12:00 WIB";
+
+        if (Array.isArray(log.food_log_items) && log.food_log_items.length > 0) {
+          for (const item of log.food_log_items) {
+            items.push({
+              id: item.id || `item-${Math.random()}`,
+              food_name: item.food_name,
+              estimated_weight_g: Number(item.weight_g) || 100,
+              calories_kcal: Number(item.calories_kcal) || 0,
+              time_logged: timeStr,
+              meal_slot: "Ransum Tempur",
+              macros: {
+                carbs_g: Number(item.carbs_g) || 0,
+                protein_g: Number(item.protein_g) || 0,
+                fat_g: Number(item.fat_g) || 0,
+                fiber_g: Number(item.fiber_g) || 0,
+                sugar_g: Number(item.sugar_g) || 0,
+              },
+              micros: item.micros_json || {},
+            });
+          }
+        } else if (log.ai_response_json?.items && Array.isArray(log.ai_response_json.items)) {
+          for (const item of log.ai_response_json.items) {
+            items.push({
+              id: item.id || `item-${Math.random()}`,
+              food_name: item.food_name,
+              estimated_weight_g: Number(item.estimated_weight_g) || 100,
+              calories_kcal: Number(item.calories_kcal) || 0,
+              time_logged: timeStr,
+              meal_slot: "Ransum Tempur",
+              macros: {
+                carbs_g: Number(item.macros?.carbs_g) || 0,
+                protein_g: Number(item.macros?.protein_g) || 0,
+                fat_g: Number(item.macros?.fat_g) || 0,
+                fiber_g: Number(item.macros?.fiber_g) || 0,
+                sugar_g: Number(item.macros?.sugar_g) || 0,
+              },
+              micros: item.micros || {},
+            });
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, items });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const ip = req.headers.get("x-forwarded-for") || "client-local";
@@ -111,14 +196,17 @@ export async function POST(req: Request) {
         let foodLogId = "log-" + Date.now();
 
         if (user) {
-          const { data: activeProg } = await supabase
+          const admin = createAdminClient();
+          const { data: activeProg } = await admin
             .from("programs")
             .select("id, target_daily_kcal")
             .eq("user_id", user.id)
             .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(1)
             .maybeSingle();
 
-          const { data: insertedLog, error: logError } = await supabase
+          const { data: insertedLog, error: logError } = await admin
             .from("food_logs")
             .insert({
               user_id: user.id,
@@ -150,7 +238,7 @@ export async function POST(req: Request) {
               pct_of_daily_kcal: Number(((Number(item.calories_kcal || 0) / dailyTarget) * 100).toFixed(1)),
             }));
 
-            await supabase.from("food_log_items").insert(itemsToInsert);
+            await admin.from("food_log_items").insert(itemsToInsert);
           }
         }
 

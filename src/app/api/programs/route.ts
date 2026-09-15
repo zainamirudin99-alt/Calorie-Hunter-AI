@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { calculateTDEE } from "@/lib/tdee/calculator";
 import { ProgramType } from "@/types/database";
 
@@ -19,11 +19,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: program, error } = await supabase
+    const admin = createAdminClient();
+    const { data: program, error } = await admin
       .from("programs")
       .select("*")
       .eq("user_id", user.id)
       .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -57,12 +60,13 @@ export async function POST(req: Request) {
 
     const { program_type } = parseResult.data;
 
-    // Fetch user profile to calculate accurate TDEE
-    const { data: profile, error: profileError } = await supabase
+    // Fetch user profile using admin client to calculate accurate TDEE without RLS blocking
+    const admin = createAdminClient();
+    const { data: profile, error: profileError } = await admin
       .from("profiles")
       .select("*")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile || !profile.weight_kg || !profile.height_cm || !profile.age || !profile.gender) {
       return NextResponse.json(
@@ -83,7 +87,7 @@ export async function POST(req: Request) {
     const targetKcal = tdeeResult.targets[program_type];
 
     // Invariant: Mark existing active programs as superseded
-    await supabase
+    await admin
       .from("programs")
       .update({ status: "superseded" })
       .eq("user_id", user.id)
@@ -94,7 +98,7 @@ export async function POST(req: Request) {
     const endDate = new Date(startDate.getTime() + 180 * 24 * 60 * 60 * 1000);
 
     // Insert new active program
-    const { data: newProgram, error: insertError } = await supabase
+    const { data: newProgram, error: insertError } = await admin
       .from("programs")
       .insert({
         user_id: user.id,
@@ -114,7 +118,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Program ${program_type.toUpperCase()} aktif untuk 180 hari ke depan!`,
+      message: `Program ${program_type.toUpperCase()} (${targetKcal} kcal) aktif untuk 180 hari ke depan!`,
       program: newProgram,
     });
   } catch (error: any) {

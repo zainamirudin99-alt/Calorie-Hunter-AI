@@ -33,17 +33,48 @@ export default function ProgramSelectionPage() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   useEffect(() => {
-    // Load local profile if available
-    const saved = localStorage.getItem("chai_user_profile");
-    if (saved) {
+    const loadProfileData = async () => {
+      // 1. Try local profile first
+      const saved = localStorage.getItem("chai_user_profile");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.tdee) {
+            setUserTdee(Number(parsed.tdee));
+            setUserBmr(parsed.bmr ? Number(parsed.bmr) : Math.round(Number(parsed.tdee) / 1.55));
+          }
+        } catch {}
+      }
+
+      // 2. Fetch server status to ensure exact synced biometrics
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed.tdee) {
-          setUserTdee(parsed.tdee);
-          setUserBmr(Math.round(parsed.tdee / 1.55));
+        const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+        const res = await fetch("/api/auth/status", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const statusData = await res.json();
+          const p = statusData.profile;
+          if (p && p.weight_kg && p.height_cm && p.age && p.gender) {
+            const base = 10 * Number(p.weight_kg) + 6.25 * Number(p.height_cm) - 5 * Number(p.age);
+            const calculatedBmr = p.gender === "male" ? base + 5 : base - 161;
+            const palMap: Record<string, number> = {
+              sedentary: 1.2,
+              light: 1.375,
+              moderate: 1.55,
+              active: 1.725,
+              very_active: 1.9,
+            };
+            const pal = palMap[p.activity_level] || 1.55;
+            const calculatedTdee = Math.round(calculatedBmr * pal);
+            setUserTdee(calculatedTdee);
+            setUserBmr(Math.round(calculatedBmr));
+          }
         }
       } catch {}
-    }
+    };
+
+    loadProfileData();
   }, []);
 
   const programs = [
@@ -114,32 +145,44 @@ export default function ProgramSelectionPage() {
         throw new Error(data.error || "Gagal mengaktifkan program");
       }
 
-      setFeedback({
-        type: "success",
-        msg: `Program ${selectedType.toUpperCase()} aktif! Membuka Layar Tracking Kalori (Menu Utama)...`,
-      });
-
-      setTimeout(() => {
-        router.push("/scanner");
-      }, 900);
-    } catch {
-      // Local fallback
-      localStorage.setItem("chai_active_program", JSON.stringify({
+      const activeProg = data.program || {
         program_type: selectedType,
         target_daily_kcal: programs.find(p => p.id === selectedType)?.targetKcal || 1950,
         start_date: new Date().toISOString(),
         end_date: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
         status: "active",
-      }));
+      };
+
+      // Always persist active program to localStorage
+      localStorage.setItem("chai_active_program", JSON.stringify(activeProg));
 
       setFeedback({
         type: "success",
-        msg: `Program ${selectedType.toUpperCase()} aktif secara lokal! Melanjutkan ke Tracking Kalori...`,
+        msg: `Program ${selectedType.toUpperCase()} (${activeProg.target_daily_kcal} kcal) aktif! Membuka Layar Tracking Makanan...`,
       });
 
       setTimeout(() => {
-        router.push("/scanner");
-      }, 900);
+        window.location.href = "/scanner";
+      }, 700);
+    } catch {
+      // Local fallback
+      const fallbackProg = {
+        program_type: selectedType,
+        target_daily_kcal: programs.find(p => p.id === selectedType)?.targetKcal || 1950,
+        start_date: new Date().toISOString(),
+        end_date: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+        status: "active",
+      };
+      localStorage.setItem("chai_active_program", JSON.stringify(fallbackProg));
+
+      setFeedback({
+        type: "success",
+        msg: `Program ${selectedType.toUpperCase()} (${fallbackProg.target_daily_kcal} kcal) aktif secara lokal! Melanjutkan ke Tracking Kalori...`,
+      });
+
+      setTimeout(() => {
+        window.location.href = "/scanner";
+      }, 700);
     } finally {
       setLoading(false);
     }

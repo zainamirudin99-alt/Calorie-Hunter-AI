@@ -134,136 +134,88 @@ export default function TrackingMakananPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // Helper to apply program data to state
+  const applyProgramData = (prog: any) => {
+    if (!prog) return;
+    const target = Number(prog.target_daily_kcal);
+    if (!target || isNaN(target)) return;
+
+    setDailyTargetKcal(target);
+    const pType = (prog.program_type || "cutting").toLowerCase();
+    if (pType === "bulking") {
+      setActiveProgramName("Bulking Power Surge (+15%)");
+      setTargetProteinG(Math.round((target * 0.25) / 4));
+      setTargetCarbsG(Math.round((target * 0.55) / 4));
+      setTargetFatG(Math.round((target * 0.20) / 9));
+    } else if (pType === "maintenance") {
+      setActiveProgramName("Maintenance Defense (0%)");
+      setTargetProteinG(Math.round((target * 0.30) / 4));
+      setTargetCarbsG(Math.round((target * 0.45) / 4));
+      setTargetFatG(Math.round((target * 0.25) / 9));
+    } else {
+      setActiveProgramName("Cutting Protocol (-20%)");
+      setTargetProteinG(Math.round((target * 0.35) / 4));
+      setTargetCarbsG(Math.round((target * 0.40) / 4));
+      setTargetFatG(Math.round((target * 0.25) / 9));
+    }
+  };
+
   // Load active program & stored logs on mount
   useEffect(() => {
-    // 1. Program loading
+    // 1. Immediate program loading from local storage
     const savedProg = localStorage.getItem("chai_active_program");
     if (savedProg) {
       try {
-        const prog = JSON.parse(savedProg);
-        if (prog.target_daily_kcal) {
-          const target = Number(prog.target_daily_kcal);
-          setDailyTargetKcal(target);
-          const pType = (prog.program_type || "cutting").toLowerCase();
-          if (pType === "bulking") {
-            setActiveProgramName("Bulking Power Surge (+15%)");
-            setTargetProteinG(Math.round((target * 0.25) / 4));
-            setTargetCarbsG(Math.round((target * 0.55) / 4));
-            setTargetFatG(Math.round((target * 0.20) / 9));
-          } else if (pType === "maintenance") {
-            setActiveProgramName("Maintenance Defense (0%)");
-            setTargetProteinG(Math.round((target * 0.30) / 4));
-            setTargetCarbsG(Math.round((target * 0.45) / 4));
-            setTargetFatG(Math.round((target * 0.25) / 9));
-          } else {
-            setActiveProgramName("Cutting Protocol (-20%)");
-            setTargetProteinG(Math.round((target * 0.35) / 4));
-            setTargetCarbsG(Math.round((target * 0.40) / 4));
-            setTargetFatG(Math.round((target * 0.25) / 9));
+        applyProgramData(JSON.parse(savedProg));
+      } catch {}
+    }
+
+    // 2. Fetch server active program to ensure 100% sync with database
+    const syncServerProgram = async () => {
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+        const res = await fetch("/api/auth/status", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.program && data.program.target_daily_kcal) {
+            applyProgramData(data.program);
+            localStorage.setItem("chai_active_program", JSON.stringify(data.program));
+          }
+        }
+      } catch {}
+    };
+    syncServerProgram();
+
+    // 3. Food logs loading:
+    // IMPORTANT: Empty by default. Clean up any previous dummy/mock seed meals so user gets a clean slate.
+    const savedLogs = localStorage.getItem("chai_food_logs_by_date");
+    const cleanedLogs: Record<string, LoggedFoodItem[]> = {};
+    if (savedLogs) {
+      try {
+        const parsed = JSON.parse(savedLogs);
+        for (const [dateKey, items] of Object.entries(parsed)) {
+          if (Array.isArray(items)) {
+            const realItems = items.filter(
+              (it: any) =>
+                it &&
+                !String(it.id).startsWith("seed-") &&
+                !String(it.food_name).includes("Proto-Oat Beast") &&
+                !String(it.food_name).includes("Cyber-Chicken Skewer") &&
+                !String(it.food_name).includes("Whey Elixir")
+            );
+            if (realItems.length > 0) {
+              cleanedLogs[dateKey] = realItems;
+            }
           }
         }
       } catch {}
     }
+    setLogsByDate(cleanedLogs);
+    localStorage.setItem("chai_food_logs_by_date", JSON.stringify(cleanedLogs));
 
-    // 2. Food logs loading
-    const savedLogs = localStorage.getItem("chai_food_logs_by_date");
-    const today = getTodayString();
-    if (savedLogs) {
-      try {
-        const parsed = JSON.parse(savedLogs);
-        // If today has no logs yet, seed default tactical meals
-        if (!parsed[today] || parsed[today].length === 0) {
-          parsed[today] = [
-            {
-              id: "seed-1",
-              food_name: "Proto-Oat Beast (Oatmeal + Telur Rebus)",
-              estimated_weight_g: 180,
-              calories_kcal: 420,
-              time_logged: "08:30 WIB",
-              meal_slot: "Sarapan",
-              macros: { carbs_g: 52, protein_g: 28, fat_g: 10, fiber_g: 4 },
-              micros: { sodium_mg: 120, potassium_mg: 230, vitamin_c_mg: 2 },
-            },
-            {
-              id: "seed-2",
-              food_name: "Cyber-Chicken Skewer (Dada Ayam + Nasi Merah)",
-              estimated_weight_g: 300,
-              calories_kcal: 680,
-              time_logged: "13:15 WIB",
-              meal_slot: "Makan Siang",
-              macros: { carbs_g: 65, protein_g: 54, fat_g: 18, fiber_g: 5 },
-              micros: { sodium_mg: 450, potassium_mg: 380, vitamin_c_mg: 15 },
-            },
-            {
-              id: "seed-3",
-              food_name: "Whey Elixir of Power",
-              estimated_weight_g: 250,
-              calories_kcal: 180,
-              time_logged: "16:48 WIB",
-              meal_slot: "Katalis Sore",
-              macros: { carbs_g: 4, protein_g: 30, fat_g: 2, fiber_g: 0 },
-              micros: { sodium_mg: 110, potassium_mg: 140, vitamin_c_mg: 0 },
-            }
-          ];
-        }
-        setLogsByDate(parsed);
-      } catch {
-        // Fallback default
-        setLogsByDate({
-          [today]: [
-            {
-              id: "seed-1",
-              food_name: "Proto-Oat Beast (Oatmeal + Telur Rebus)",
-              estimated_weight_g: 180,
-              calories_kcal: 420,
-              time_logged: "08:30 WIB",
-              meal_slot: "Sarapan",
-              macros: { carbs_g: 52, protein_g: 28, fat_g: 10, fiber_g: 4 },
-              micros: { sodium_mg: 120, potassium_mg: 230, vitamin_c_mg: 2 },
-            }
-          ]
-        });
-      }
-    } else {
-      const initialMap = {
-        [today]: [
-          {
-            id: "seed-1",
-            food_name: "Proto-Oat Beast (Oatmeal + Telur Rebus)",
-            estimated_weight_g: 180,
-            calories_kcal: 420,
-            time_logged: "08:30 WIB",
-            meal_slot: "Sarapan",
-            macros: { carbs_g: 52, protein_g: 28, fat_g: 10, fiber_g: 4 },
-            micros: { sodium_mg: 120, potassium_mg: 230, vitamin_c_mg: 2 },
-          },
-          {
-            id: "seed-2",
-            food_name: "Cyber-Chicken Skewer (Dada Ayam + Nasi Merah)",
-            estimated_weight_g: 300,
-            calories_kcal: 680,
-            time_logged: "13:15 WIB",
-            meal_slot: "Makan Siang",
-            macros: { carbs_g: 65, protein_g: 54, fat_g: 18, fiber_g: 5 },
-            micros: { sodium_mg: 450, potassium_mg: 380, vitamin_c_mg: 15 },
-          },
-          {
-            id: "seed-3",
-            food_name: "Whey Elixir of Power",
-            estimated_weight_g: 250,
-            calories_kcal: 180,
-            time_logged: "16:48 WIB",
-            meal_slot: "Katalis Sore",
-            macros: { carbs_g: 4, protein_g: 30, fat_g: 2, fiber_g: 0 },
-            micros: { sodium_mg: 110, potassium_mg: 140, vitamin_c_mg: 0 },
-          }
-        ]
-      };
-      setLogsByDate(initialMap);
-      localStorage.setItem("chai_food_logs_by_date", JSON.stringify(initialMap));
-    }
-
-    // 3. Check quick mobile camera capture
+    // 4. Check quick mobile camera capture
     const quickCapture = sessionStorage.getItem("chai_quick_capture");
     if (quickCapture) {
       setPreviewUrl(quickCapture);
@@ -278,6 +230,30 @@ export default function TrackingMakananPage() {
       sessionStorage.removeItem("chai_quick_capture");
     }
   }, []);
+
+  // Fetch logged foods from database whenever selectedDate changes
+  useEffect(() => {
+    const fetchDateLogs = async () => {
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+        const res = await fetch(`/api/food-log?date=${selectedDate}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.items)) {
+            setLogsByDate(prev => {
+              const updated = { ...prev, [selectedDate]: data.items };
+              localStorage.setItem("chai_food_logs_by_date", JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
+      } catch {}
+    };
+
+    fetchDateLogs();
+  }, [selectedDate]);
 
   // Save logs to localStorage helper
   const persistLogs = (updated: Record<string, LoggedFoodItem[]>) => {
