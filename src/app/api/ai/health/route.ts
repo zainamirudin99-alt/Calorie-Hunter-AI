@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const model = url.searchParams.get("model") || "gemini-2.5-flash";
+  const model = url.searchParams.get("model") || "gemini-3.8-flash";
 
   const startTime = Date.now();
 
@@ -107,11 +107,11 @@ export async function GET(req: Request) {
     });
   }
 
-  // Models to test: requested model first, then ultra-stable fallback candidates
+  // Models to test: requested model first, then fallback candidates
   const candidateModels = [
     model,
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
   ].filter((m, i, arr) => arr.indexOf(m) === i);
 
   let firstError: any = null;

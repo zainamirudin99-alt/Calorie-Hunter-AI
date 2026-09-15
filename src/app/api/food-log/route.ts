@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL, resolveSafeGeminiModel } from "@/lib/gemini/client";
+import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from "@/lib/gemini/client";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -488,18 +488,18 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
       }
       contents.push(promptText);
 
-      // Models to try in priority order with safe mapping
+      // Models to try in priority order
       const candidateModels = [
-        resolveSafeGeminiModel(effectiveModel),
+        effectiveModel.startsWith("gemini-") ? effectiveModel : PRIMARY_GEMINI_MODEL,
         PRIMARY_GEMINI_MODEL,
         FALLBACK_GEMINI_MODEL,
-        "gemini-2.5-flash",
+        "gemini-3.7-flash",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentCandidate of candidateModels) {
         try {
           const response = await gemini.models.generateContent({
-            model: resolveSafeGeminiModel(currentCandidate),
+            model: currentCandidate,
             contents,
             config: {
               responseMimeType: "application/json",

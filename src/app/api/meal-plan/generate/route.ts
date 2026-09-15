@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { gemini } from "@/lib/gemini/client";
+import { gemini, PRIMARY_GEMINI_MODEL } from "@/lib/gemini/client";
 import { createServerClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       age: 25,
       gender: "male",
       activity_level: "moderate",
-      preferred_gemini_model: "gemini-2.5-flash",
+      preferred_gemini_model: "gemini-3.8-flash",
     };
     let program = {
       id: "demo-prog",
@@ -143,7 +143,7 @@ export async function POST(req: Request) {
     const selectedModel = 
       requestBody?.preferred_model ||
       profile.preferred_gemini_model ||
-      (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : "gemini-2.5-flash");
+      (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : "gemini-3.8-flash");
 
     const prompt = `
 Anda adalah AI Ahli Gizi & Nutrisi Olahraga untuk sistem CALORIE HUNTER AI.
@@ -225,9 +225,9 @@ Instruksi menu:
     // 4C: Google Gemini Series (with automatic capacity cascade without thinkingLevel HIGH)
     if (!generatedJson && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("placeholder")) {
       const candidateModels = [
-        selectedModel.startsWith("gemini-") ? selectedModel : "gemini-2.5-flash",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
+        selectedModel.startsWith("gemini-") ? selectedModel : PRIMARY_GEMINI_MODEL,
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentModel of candidateModels) {

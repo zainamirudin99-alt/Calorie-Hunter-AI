@@ -193,8 +193,8 @@ Berikan analisis mendalam dan objektif dalam Bahasa Indonesia taktis:
       const candidateModels = [
         selectedModel.startsWith("gemini-") ? selectedModel : PRIMARY_GEMINI_MODEL,
         PRIMARY_GEMINI_MODEL,
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const candidate of candidateModels) {
