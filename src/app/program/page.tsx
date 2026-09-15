@@ -9,6 +9,7 @@ import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { ProgramType } from "@/types/database";
 import { getProgramNutrientRules } from "@/lib/tdee/calculator";
+import { useSelectedAiModel } from "@/lib/gemini/models";
 import { 
   Target, 
   Flame, 
@@ -31,6 +32,7 @@ import {
 export default function ProgramSelectionPage() {
   const router = useRouter();
   const { isUltraman } = useTacticalTheme();
+  const { activeModel, modelId } = useSelectedAiModel();
 
   const [selectedType, setSelectedType] = useState<ProgramType>("loss_fat_build_muscle");
   const [userTdee, setUserTdee] = useState<number>(2450);
@@ -223,6 +225,7 @@ export default function ProgramSelectionPage() {
         body: JSON.stringify({
           program_type: progType,
           profile: userProfile,
+          model: modelId,
         }),
       });
 
@@ -237,10 +240,10 @@ export default function ProgramSelectionPage() {
     }
   };
 
-  // Run AI analysis on mount or program change
+  // Run AI analysis on mount, program change, or model change
   useEffect(() => {
     triggerAiAnalysis(selectedType);
-  }, [selectedType]);
+  }, [selectedType, modelId]);
 
   const handleActivateProgram = async () => {
     setLoading(true);
@@ -329,7 +332,7 @@ export default function ProgramSelectionPage() {
                 PILIH PROGRAM TIKET TEMPUR & ANALISIS AI
               </h1>
               <span className="font-mono text-[11px] text-outline uppercase block mt-0.5">
-                Pilih dari 6 protokol nutrisi terukur • Dianalisis langsung oleh Gemini 3.8 Flash
+                Pilih dari 6 protokol nutrisi terukur • Dianalisis langsung oleh {activeModel.shortName}
               </span>
             </div>
           </div>
@@ -462,7 +465,7 @@ export default function ProgramSelectionPage() {
               </div>
               <div>
                 <span className="font-display text-sm font-bold hud-hero-text uppercase tracking-wide">
-                  HASIL ANALISIS KELAYAKAN AI (GEMINI 3.8 FLASH)
+                  HASIL ANALISIS KELAYAKAN AI ({activeModel.shortName})
                 </span>
                 <span className="font-mono text-[11px] hud-text-muted block">
                   Analisis biometrik untuk program: <strong className="hud-text font-bold">{selectedProgObj.title}</strong> ({selectedProgObj.targetKcal} kcal)
@@ -484,7 +487,7 @@ export default function ProgramSelectionPage() {
             <div className="py-8 flex flex-col items-center justify-center gap-3 text-center">
               <RefreshCw className="w-8 h-8 hud-hero-text animate-spin" />
               <span className="font-mono text-xs hud-text-muted">
-                Gemini 3.8 Flash sedang menganalisis data biometrik ({userWeightKg}kg, TDEE {userTdee} kcal) terhadap aturan {selectedProgObj.title}...
+                {activeModel.shortName} sedang menganalisis data biometrik ({userWeightKg}kg, TDEE {userTdee} kcal) terhadap aturan {selectedProgObj.title}...
               </span>
             </div>
           ) : aiAnalysisResult ? (
@@ -553,7 +556,7 @@ export default function ProgramSelectionPage() {
             </div>
           ) : (
             <div className="py-4 text-center font-mono text-xs text-outline">
-              Klik &quot;Analisis Ulang AI&quot; untuk memuat konsultasi Gemini 3.8 Flash.
+              Klik &quot;Analisis Ulang AI&quot; untuk memuat konsultasi {activeModel.shortName}.
             </div>
           )}
         </div>

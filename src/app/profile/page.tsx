@@ -239,6 +239,9 @@ export default function ProfilePage() {
     setSelectedModel(newModel);
     localStorage.setItem("chai_ai_model", newModel);
     document.cookie = `chai_ai_model=${encodeURIComponent(newModel)}; path=/; max-age=31536000; SameSite=Lax`;
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("chai_ai_model_changed", { detail: newModel }));
+    }
     checkAiHealth(newModel);
   };
 

@@ -23,6 +23,7 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Edit2,
   Trash2,
   Save,
@@ -34,6 +35,7 @@ import {
 
 import { ProgramType } from "@/types/database";
 import { getProgramNutrientRules } from "@/lib/tdee/calculator";
+import { useSelectedAiModel } from "@/lib/gemini/models";
 
 interface LoggedFoodItem {
   id: string;
@@ -55,6 +57,17 @@ interface LoggedFoodItem {
     vitamin_c_mg?: number;
   };
 }
+
+const QUICK_MEAL_PRESETS = [
+  { label: "🍚 Nasi Padang Rendang", hint: "Nasi padang rendang sapi, daun singkong, sambal ijo", text: "1 porsi nasi padang (200g) + rendang sapi (80g) + daun singkong rebus (50g) + sambal hijau (15g)" },
+  { label: "🍗 Dada Ayam Bakar + Nasi", hint: "Nasi putih, dada ayam bakar tanpa kulit, lalapan timun", text: "Nasi putih (200g) + dada ayam bakar (150g) + tahu tempe bacem (75g) + lalapan timun sambal" },
+  { label: "🍳 Nasi Goreng Telur", hint: "Nasi goreng kampung telur ceplok dan acar", text: "1 piring nasi goreng kampung (250g) + telur ceplok goreng (55g) + kerupuk (15g) + irisan timun tomat" },
+  { label: "🥗 Gado-Gado Lontong Telur", hint: "Gado-gado sayur bumbu kacang telur rebus", text: "Gado-gado sayuran rebus (150g) + lontong (100g) + telur rebus 1 butir (55g) + bumbu kacang (50g)" },
+  { label: "🍲 Soto Ayam Lamongan", hint: "Soto ayam kuah bening koya soun telur", text: "1 mangkuk soto ayam lamongan (300g kuah & ayam 80g) + soun (50g) + telur rebus 1 butir + koya" },
+  { label: "🥣 Bubur Ayam Komplit", hint: "Bubur ayam cakwe suwiran ayam kerupuk", text: "1 mangkuk bubur ayam (250g) + suwiran ayam (50g) + cakwe (20g) + kedelai goreng (15g) + kerupuk" },
+  { label: "🐟 Ikan Bakar + Sayur Asem", hint: "Ikan nila bakar, sayur asem, nasi putih", text: "Nasi putih (200g) + ikan nila bakar bumbu kecap (150g) + sayur asem (200g) + sambal terasi" },
+  { label: "🥣 Oatmeal + Pisang Madu", hint: "Oatmeal matang susu dengan pisang dan madu", text: "Oatmeal matang (150g) + pisang ambon iris 1 buah (100g) + madu murni (15g) + susu low fat (100ml)" },
+];
 
 function getTodayString(): string {
   const d = new Date();
@@ -104,6 +117,7 @@ function shiftDateBy(dateStr: string, offset: number): string {
 
 export default function TrackingMakananPage() {
   const { isUltraman } = useTacticalTheme();
+  const { activeModel, modelId, changeModel, availableModels } = useSelectedAiModel();
 
   // Date Navigation State
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
@@ -111,8 +125,11 @@ export default function TrackingMakananPage() {
   // Input & Camera State
   const [inputMode, setInputMode] = useState<"photo" | "manual_text">("photo");
   const [manualText, setManualText] = useState("");
+  const [photoHint, setPhotoHint] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 
   // Analysis & Loading
   const [loading, setLoading] = useState(false);
@@ -334,14 +351,113 @@ export default function TrackingMakananPage() {
   const remainingKcal = Math.max(0, dailyTargetKcal - dayConsumedKcal);
   const pctConsumed = Math.min(100, Math.round((dayConsumedKcal / (dailyTargetKcal || 1)) * 100));
 
-  // File selection
+  // Quick Presets if user wants to fast-pick or adapt AI recommendations
+  const QUICK_HEALTHY_PRESETS = [
+    {
+      name: "Ayam Bakar & Nasi",
+      items: [
+        { food_name: "Nasi Putih", estimated_weight_g: 150, calories_kcal: 195, macros: { carbs_g: 42, protein_g: 4, fat_g: 0, fiber_g: 1, sugar_g: 0 }, micros: { sodium_mg: 5, potassium_mg: 50, vitamin_c_mg: 0 } },
+        { food_name: "Dada Ayam Bakar Madu", estimated_weight_g: 140, calories_kcal: 260, macros: { carbs_g: 6, protein_g: 38, fat_g: 8, fiber_g: 0, sugar_g: 5 }, micros: { sodium_mg: 380, potassium_mg: 320, vitamin_c_mg: 2 } },
+        { food_name: "Lalapan & Sambal", estimated_weight_g: 60, calories_kcal: 45, macros: { carbs_g: 5, protein_g: 1, fat_g: 2, fiber_g: 2, sugar_g: 2 }, micros: { sodium_mg: 120, potassium_mg: 110, vitamin_c_mg: 12 } }
+      ]
+    },
+    {
+      name: "Nasi Padang Rendang",
+      items: [
+        { food_name: "Nasi Putih", estimated_weight_g: 160, calories_kcal: 210, macros: { carbs_g: 45, protein_g: 4, fat_g: 0, fiber_g: 1, sugar_g: 0 }, micros: { sodium_mg: 5, potassium_mg: 60, vitamin_c_mg: 0 } },
+        { food_name: "Rendang Daging Sapi", estimated_weight_g: 100, calories_kcal: 280, macros: { carbs_g: 4, protein_g: 24, fat_g: 19, fiber_g: 1, sugar_g: 2 }, micros: { sodium_mg: 480, potassium_mg: 340, vitamin_c_mg: 2 } },
+        { food_name: "Telur Balado", estimated_weight_g: 60, calories_kcal: 115, macros: { carbs_g: 2, protein_g: 7, fat_g: 9, fiber_g: 0, sugar_g: 1 }, micros: { sodium_mg: 190, potassium_mg: 90, vitamin_c_mg: 3 } }
+      ]
+    },
+    {
+      name: "Gado-Gado Telur Rebus",
+      items: [
+        { food_name: "Sayuran Rebus & Tahu Tempe", estimated_weight_g: 180, calories_kcal: 160, macros: { carbs_g: 18, protein_g: 12, fat_g: 6, fiber_g: 6, sugar_g: 3 }, micros: { sodium_mg: 180, potassium_mg: 320, vitamin_c_mg: 25 } },
+        { food_name: "Saus Bumbu Kacang", estimated_weight_g: 60, calories_kcal: 180, macros: { carbs_g: 12, protein_g: 6, fat_g: 13, fiber_g: 2, sugar_g: 6 }, micros: { sodium_mg: 290, potassium_mg: 140, vitamin_c_mg: 0 } },
+        { food_name: "Telur Rebus 1 Butir", estimated_weight_g: 55, calories_kcal: 75, macros: { carbs_g: 0, protein_g: 6, fat_g: 5, fiber_g: 0, sugar_g: 0 }, micros: { sodium_mg: 65, potassium_mg: 65, vitamin_c_mg: 0 } }
+      ]
+    },
+    {
+      name: "Dada Ayam Fillet & Brokoli",
+      items: [
+        { food_name: "Dada Ayam Panggang Herb", estimated_weight_g: 160, calories_kcal: 260, macros: { carbs_g: 0, protein_g: 46, fat_g: 6, fiber_g: 0, sugar_g: 0 }, micros: { sodium_mg: 220, potassium_mg: 390, vitamin_c_mg: 0 } },
+        { food_name: "Brokoli & Jagung Manis Kukus", estimated_weight_g: 120, calories_kcal: 85, macros: { carbs_g: 15, protein_g: 4, fat_g: 1, fiber_g: 4, sugar_g: 4 }, micros: { sodium_mg: 30, potassium_mg: 290, vitamin_c_mg: 60 } }
+      ]
+    }
+  ];
+
+  // File selection with automatic client-side canvas compression & format sanitization
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setErrorMsg(null);
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setSelectedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-      setManualText("");
+      setIsCompressingPhoto(true);
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const resultStr = event.target?.result as string;
+        if (!resultStr) {
+          setSelectedFile(file);
+          setPreviewUrl(URL.createObjectURL(file));
+          setIsCompressingPhoto(false);
+          return;
+        }
+
+        const img = new window.Image();
+        img.onload = () => {
+          const maxDim = 1200;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  const optimizedFile = new File([blob], "food-capture.jpg", { type: "image/jpeg" });
+                  setSelectedFile(optimizedFile);
+                  setPreviewUrl(URL.createObjectURL(blob));
+                } else {
+                  setSelectedFile(file);
+                  setPreviewUrl(URL.createObjectURL(file));
+                }
+                setIsCompressingPhoto(false);
+              },
+              "image/jpeg",
+              0.88
+            );
+          } else {
+            setSelectedFile(file);
+            setPreviewUrl(URL.createObjectURL(file));
+            setIsCompressingPhoto(false);
+          }
+        };
+        img.onerror = () => {
+          setSelectedFile(file);
+          setPreviewUrl(URL.createObjectURL(file));
+          setIsCompressingPhoto(false);
+        };
+        img.src = resultStr;
+      };
+      reader.onerror = () => {
+        setSelectedFile(file);
+        setPreviewUrl(URL.createObjectURL(file));
+        setIsCompressingPhoto(false);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -353,7 +469,7 @@ export default function TrackingMakananPage() {
     }
   };
 
-  const canProcess = (inputMode === "photo" && selectedFile) || (inputMode === "manual_text" && manualText.trim().length > 0);
+  const canProcess = (inputMode === "photo" && selectedFile && !isCompressingPhoto) || (inputMode === "manual_text" && manualText.trim().length > 0);
 
   // Send to AI for Nutrition analysis (action: "analyze" only, no DB commit yet)
   const handleProcessAI = async () => {
@@ -364,8 +480,12 @@ export default function TrackingMakananPage() {
 
     const formData = new FormData();
     formData.append("action", "analyze");
+    formData.append("model", modelId);
     if (inputMode === "photo" && selectedFile) {
       formData.append("photo", selectedFile);
+      if (photoHint.trim()) {
+        formData.append("raw_text_input", photoHint.trim());
+      }
     } else if (inputMode === "manual_text" && manualText.trim()) {
       formData.append("raw_text_input", manualText.trim());
     }
@@ -374,7 +494,10 @@ export default function TrackingMakananPage() {
       const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       const res = await fetch("/api/food-log", {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "x-ai-model": modelId,
+        },
         body: formData,
       });
 
@@ -836,9 +959,42 @@ export default function TrackingMakananPage() {
                     INPUT RANSUM KE TANGGAL: {selectedDate}
                   </h3>
                 </div>
-                <span className="font-mono text-[10px] hud-beam-text border hud-border px-2 py-0.5 rounded hud-card-inner font-bold">
-                  GEMINI 3.8 FLASH
-                </span>
+                {/* Dynamic AI Model Selector Badge (Synchronized with Profile & Program) */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                    className="font-mono text-[10px] hud-beam-text border hud-border px-2.5 py-1 rounded hud-card-inner font-bold flex items-center gap-1.5 hover:border-primary transition-all cursor-pointer shadow-sm"
+                    title="Model AI yang aktif — klik untuk mengganti secara global"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span>{activeModel.shortName}</span>
+                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isModelDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {isModelDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1.5 w-56 hud-card border border-primary/50 rounded shadow-2xl p-1 z-30 font-mono text-[11px] space-y-0.5 backdrop-blur-md">
+                      <div className="px-2 py-1 text-[9px] text-outline uppercase font-bold border-b hud-border">
+                        PILIH ENGINE SENSOR AI (GLOBAL)
+                      </div>
+                      {availableModels.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            changeModel(m.id);
+                            setIsModelDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between transition-colors ${
+                            m.id === modelId ? "hud-hero-bg text-black font-bold" : "hud-card-inner hover:bg-primary/20 text-slate-200"
+                          }`}
+                        >
+                          <span>{m.shortName}</span>
+                          <span className="text-[8px] opacity-75">{m.badge}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Mode Switcher */}
@@ -927,7 +1083,8 @@ export default function TrackingMakananPage() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="py-2.5 px-3 rounded hud-card-high border hud-border font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-primary transition-all cursor-pointer"
+                      disabled={isCompressingPhoto}
+                      className="py-2.5 px-3 rounded hud-card-high border hud-border font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-primary transition-all cursor-pointer disabled:opacity-50"
                     >
                       <Upload className="w-4 h-4 text-cyan-400" />
                       <span>PILIH GALERI</span>
@@ -935,12 +1092,59 @@ export default function TrackingMakananPage() {
                     <button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
-                      className="py-2.5 px-3 rounded hud-card-high border border-emerald-500/50 bg-emerald-500/10 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-emerald-400 transition-all text-emerald-400 cursor-pointer shadow-md active:scale-98"
+                      disabled={isCompressingPhoto}
+                      className="py-2.5 px-3 rounded hud-card-high border border-emerald-500/50 bg-emerald-500/10 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-emerald-400 transition-all text-emerald-400 cursor-pointer shadow-md active:scale-98 disabled:opacity-50"
                     >
                       <Camera className="w-4 h-4" />
                       <span>KAMERA HP</span>
                     </button>
                   </div>
+
+                  {isCompressingPhoto && (
+                    <div className="p-2.5 rounded hud-card-inner border hud-border font-mono text-[11px] text-cyan-400 flex items-center justify-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                      <span>Mengompresi foto & mengonversi ke format standar sensor AI...</span>
+                    </div>
+                  )}
+
+                  {previewUrl && (
+                    <div className="space-y-2 p-3 rounded hud-card-inner border hud-border text-left">
+                      <label className="text-[11px] font-mono hud-hero-text font-bold uppercase flex items-center gap-1.5">
+                        <Type className="w-3.5 h-3.5" />
+                        <span>Petunjuk / Catatan Menu (Opsional):</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={photoHint}
+                        onChange={(e) => setPhotoHint(e.target.value)}
+                        placeholder="Contoh: Nasi padang ayam bakar dada, tahu goreng..."
+                        className="w-full px-3 py-2 rounded hud-card border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary"
+                      />
+                      <span className="text-[10px] text-outline block">
+                        Opsional: Tuliskan catatan menu untuk membantu sensor AI mendeteksi dengan presisi tinggi.
+                      </span>
+
+                      {/* Quick Presets for Photo Hint */}
+                      <div className="pt-2 border-t hud-border space-y-1.5">
+                        <span className="text-[10px] text-outline font-mono uppercase flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-cyan-400" />
+                          <span>Pilihan Cepat Menu (Klik untuk isi petunjuk):</span>
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {QUICK_MEAL_PRESETS.map((preset, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setPhotoHint(preset.hint)}
+                              className="px-2 py-1 rounded hud-card border hud-border text-[10px] font-mono hover:border-primary hover:text-cyan-400 transition-colors text-left cursor-pointer"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -957,6 +1161,26 @@ export default function TrackingMakananPage() {
                     placeholder="Contoh: 1 piring nasi putih (200g) + dada ayam bakar kecap (150g) + tahu goreng 2 buah"
                     className="w-full p-3 rounded hud-card-inner border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary"
                   />
+
+                  {/* Quick Presets for Manual Text */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] text-outline font-mono uppercase flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-cyan-400" />
+                      <span>Pilihan Cepat Menu Ransum (Klik untuk isi otomatis):</span>
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_MEAL_PRESETS.map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleTextChange(preset.text)}
+                          className="px-2.5 py-1 rounded hud-card border hud-border text-[10px] font-mono hover:border-primary hover:text-cyan-400 transition-colors text-left cursor-pointer"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 

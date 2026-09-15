@@ -84,8 +84,13 @@ export async function POST(req: Request) {
     const targetKcal = tdeeResult.targets[program_type] || tdeeResult.targets.cutting;
     const rules = getProgramNutrientRules(program_type);
 
+    // Resolve selected Gemini model from body, cookie, or header
+    const cookieHeader = req.headers.get("cookie") || "";
+    const cookieModelMatch = cookieHeader.match(/(?:^|;\s*)chai_ai_model=([^;]+)/);
+    const selectedModel = body.model || (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : PRIMARY_GEMINI_MODEL);
+
     const prompt = `
-Anda adalah Chief AI Tactical Nutritionist di Calorie Hunter AI ("Gemini 3.8 Flash").
+Anda adalah Chief AI Tactical Nutritionist di Calorie Hunter AI ("${selectedModel}").
 Tugas Anda: Analisis kesesuaian biometrik Hunter berikut terhadap program yang dipilih:
 
 [DATA BIOMETRIK HUNTER]
@@ -120,7 +125,7 @@ Berikan analisis mendalam dan objektif dalam Bahasa Indonesia taktis:
     if (process.env.GEMINI_API_KEY) {
       try {
         const response = await gemini.models.generateContent({
-          model: PRIMARY_GEMINI_MODEL,
+          model: selectedModel,
           contents: [prompt],
           config: {
             responseMimeType: "application/json",
@@ -134,7 +139,7 @@ Berikan analisis mendalam dan objektif dalam Bahasa Indonesia taktis:
         const text = response.text || "";
         aiAnalysis = JSON.parse(text);
       } catch (err: any) {
-        console.warn("[Gemini ProgramAnalyze] Error:", err.message);
+        console.warn(`[Gemini ProgramAnalyze] Error with ${selectedModel}:`, err.message);
       }
     }
 
