@@ -84,6 +84,23 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
+  // Helper to derive PAL activity level from checked activities
+  const deriveActivityLevel = (acts: Array<{ checked: boolean; frequency_per_week: number; duration_minutes: number; intensity: string }>): ActivityLevel => {
+    const activeList = acts.filter(a => a.checked);
+    if (activeList.length === 0) return "sedentary";
+    
+    let totalScore = 0;
+    for (const a of activeList) {
+      const mult = a.intensity === "high" ? 2.0 : a.intensity === "moderate" ? 1.5 : 1.0;
+      totalScore += (Number(a.frequency_per_week) || 0) * ((Number(a.duration_minutes) || 30) / 30) * mult;
+    }
+
+    if (totalScore < 4) return "light";
+    if (totalScore < 9) return "moderate";
+    if (totalScore < 14) return "active";
+    return "very_active";
+  };
+
   // Live calculated TDEE
   const tdeeResult = calculateTDEE({
     weight_kg: weightKg || 70,
@@ -94,7 +111,16 @@ export default function ProfilePage() {
   });
 
   const toggleActivity = (id: string) => {
-    setActivities(activities.map(a => a.id === id ? { ...a, checked: !a.checked } : a));
+    const updated = activities.map(a => a.id === id ? { ...a, checked: !a.checked } : a);
+    setActivities(updated);
+    const derived = deriveActivityLevel(updated);
+    setActivityLevel(derived);
+    try {
+      const saved = JSON.parse(localStorage.getItem("chai_user_profile") || "{}");
+      saved.activities = updated;
+      saved.activity_level = derived;
+      localStorage.setItem("chai_user_profile", JSON.stringify(saved));
+    } catch {}
   };
 
   const handleAddCustomActivity = (e: React.FormEvent) => {
@@ -108,41 +134,105 @@ export default function ProfilePage() {
       intensity: newActIntensity,
       checked: true,
     };
-    setActivities([...activities, newAct]);
+    const updated = [...activities, newAct];
+    setActivities(updated);
+    const derived = deriveActivityLevel(updated);
+    setActivityLevel(derived);
     setNewActName("");
     setShowAddForm(false);
+    try {
+      const saved = JSON.parse(localStorage.getItem("chai_user_profile") || "{}");
+      saved.activities = updated;
+      saved.activity_level = derived;
+      localStorage.setItem("chai_user_profile", JSON.stringify(saved));
+    } catch {}
   };
 
   const handleDeleteActivity = (id: string) => {
-    setActivities(activities.filter(a => a.id !== id));
+    const updated = activities.filter(a => a.id !== id);
+    setActivities(updated);
+    const derived = deriveActivityLevel(updated);
+    setActivityLevel(derived);
+    try {
+      const saved = JSON.parse(localStorage.getItem("chai_user_profile") || "{}");
+      saved.activities = updated;
+      saved.activity_level = derived;
+      localStorage.setItem("chai_user_profile", JSON.stringify(saved));
+    } catch {}
   };
 
-  // Load profile & model on mount
+  // Load profile, activities & model on mount
   useEffect(() => {
     const savedModel = localStorage.getItem("chai_ai_model");
     if (savedModel && GEMINI_MODELS.some(m => m.id === savedModel)) {
       setSelectedModel(savedModel);
     }
 
-    const token = localStorage.getItem("chai_auth_token");
-    fetch("/api/auth/status", {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.profile) {
-          if (data.profile.full_name) setFullName(data.profile.full_name);
-          if (data.profile.gender) setGender(data.profile.gender);
-          if (data.profile.age) setAge(data.profile.age);
-          if (data.profile.height_cm) setHeightCm(data.profile.height_cm);
-          if (data.profile.weight_kg) setWeightKg(data.profile.weight_kg);
-          if (data.profile.activity_level) setActivityLevel(data.profile.activity_level);
+    // 1. Restore from localStorage if available
+    const savedProfile = localStorage.getItem("chai_user_profile");
+    if (savedProfile) {
+      try {
+        const parsed = JSON.parse(savedProfile);
+        if (parsed.full_name) setFullName(parsed.full_name);
+        if (parsed.gender) setGender(parsed.gender);
+        if (parsed.age) setAge(Number(parsed.age));
+        if (parsed.height_cm) setHeightCm(Number(parsed.height_cm));
+        if (parsed.weight_kg) setWeightKg(Number(parsed.weight_kg));
+        if (parsed.activity_level) setActivityLevel(parsed.activity_level);
+        if (Array.isArray(parsed.activities) && parsed.activities.length > 0) {
+          setActivities(parsed.activities);
         }
-        if (data.preferred_gemini_model) {
-          setSelectedModel(data.preferred_gemini_model);
+      } catch {}
+    }
+
+    // 2. Fetch server status and activities
+    const syncServerData = async () => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+      try {
+        const [statusRes, actRes] = await Promise.all([
+          fetch("/api/auth/status", { headers }),
+          fetch("/api/activities", { headers }),
+        ]);
+
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          if (data.profile) {
+            if (data.profile.full_name) setFullName(data.profile.full_name);
+            if (data.profile.gender) setGender(data.profile.gender);
+            if (data.profile.age) setAge(Number(data.profile.age));
+            if (data.profile.height_cm) setHeightCm(Number(data.profile.height_cm));
+            if (data.profile.weight_kg) setWeightKg(Number(data.profile.weight_kg));
+            if (data.profile.activity_level) setActivityLevel(data.profile.activity_level);
+          }
+          if (data.preferred_gemini_model) {
+            setSelectedModel(data.preferred_gemini_model);
+          }
         }
-      })
-      .catch(() => {});
+
+        if (actRes.ok) {
+          const actData = await actRes.json();
+          if (Array.isArray(actData.activities) && actData.activities.length > 0) {
+            const serverActs = actData.activities.map((a: any) => ({
+              id: a.id || `act-${Math.random()}`,
+              activity_name: a.activity_name,
+              frequency_per_week: Number(a.frequency_per_week) || 3,
+              duration_minutes: Number(a.duration_minutes) || 30,
+              intensity: a.intensity || "moderate",
+              checked: true,
+            }));
+            setActivities(prev => {
+              const names = new Set(serverActs.map((s: any) => s.activity_name.toLowerCase()));
+              const remaining = prev.filter(p => !names.has(p.activity_name.toLowerCase())).map(p => ({ ...p, checked: false }));
+              return [...serverActs, ...remaining];
+            });
+          }
+        }
+      } catch {}
+    };
+
+    syncServerData();
   }, []);
 
   const handleModelChange = (newModel: string) => {
@@ -182,13 +272,13 @@ export default function ProfilePage() {
     const checkedActivities = activities.filter(a => a.checked);
 
     try {
-      const token = localStorage.getItem("chai_auth_token");
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       const authHeaders: Record<string, string> = {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
 
-      // Save profile
+      // 1. Save profile
       await fetch("/api/profile", {
         method: "POST",
         headers: authHeaders,
@@ -203,23 +293,14 @@ export default function ProfilePage() {
         }),
       });
 
-      // Save checked activities
-      for (const act of checkedActivities) {
-        try {
-          await fetch("/api/activities", {
-            method: "POST",
-            headers: authHeaders,
-            body: JSON.stringify({
-              activity_name: act.activity_name,
-              frequency_per_week: act.frequency_per_week,
-              duration_minutes: act.duration_minutes,
-              intensity: act.intensity,
-            }),
-          });
-        } catch {}
-      }
+      // 2. Save checked activities via batch POST
+      await fetch("/api/activities", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ activities: checkedActivities }),
+      });
 
-      // Persist locally for immediate calculation & next screens
+      // 3. Persist locally with exact calculated TDEE & BMR
       localStorage.setItem("chai_user_profile", JSON.stringify({
         full_name: fullName,
         gender,
@@ -229,18 +310,18 @@ export default function ProfilePage() {
         activity_level: activityLevel,
         tdee: tdeeResult.tdee,
         bmr: tdeeResult.bmr,
-        activities: checkedActivities,
+        activities,
       }));
 
       setFeedback({ 
         type: "success", 
-        msg: "Data diri & aktivitas tersimpan! Mengalihkan ke Hasil TDEE & Pilihan Program..." 
+        msg: `Data diri & aktivitas tersimpan! TDEE: ${tdeeResult.tdee} kcal. Mengalihkan ke Hasil & Program...` 
       });
 
       setTimeout(() => {
-        router.push("/program");
-      }, 800);
-    } catch (err: any) {
+        window.location.href = "/program";
+      }, 700);
+    } catch {
       // Local preview fallback
       localStorage.setItem("chai_user_profile", JSON.stringify({
         full_name: fullName,
@@ -251,17 +332,17 @@ export default function ProfilePage() {
         activity_level: activityLevel,
         tdee: tdeeResult.tdee,
         bmr: tdeeResult.bmr,
-        activities: checkedActivities,
+        activities,
       }));
 
       setFeedback({
         type: "success",
-        msg: "Data tersimpan secara lokal. Melanjutkan ke Hasil TDEE & Program...",
+        msg: `Data tersimpan secara lokal (TDEE: ${tdeeResult.tdee} kcal). Melanjutkan ke Program...`,
       });
 
       setTimeout(() => {
-        router.push("/program");
-      }, 800);
+        window.location.href = "/program";
+      }, 700);
     } finally {
       setLoading(false);
     }

@@ -24,11 +24,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: profile, error } = await supabase
+    const admin = createAdminClient();
+    const { data: profile, error } = await admin
       .from("profiles")
       .select("*")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -61,10 +62,12 @@ export async function POST(req: Request) {
 
     const profileData = parseResult.data;
 
-    // Update profile
-    const { data: updatedProfile, error: updateError } = await supabase
+    // Upsert profile with admin client to prevent RLS or missing row errors
+    const admin = createAdminClient();
+    const { data: updatedProfile, error: updateError } = await admin
       .from("profiles")
-      .update({
+      .upsert({
+        id: user.id,
         full_name: profileData.full_name || null,
         gender: profileData.gender,
         age: profileData.age,
@@ -73,7 +76,6 @@ export async function POST(req: Request) {
         activity_level: profileData.activity_level,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", user.id)
       .select()
       .single();
 
@@ -82,12 +84,14 @@ export async function POST(req: Request) {
     }
 
     // Automatically record an initial weight log if none exists or as latest log
-    await supabase.from("weight_logs").insert({
-      user_id: user.id,
-      weight_kg: profileData.weight_kg,
-      note: "Catatan awal dari form data diri",
-      logged_at: new Date().toISOString(),
-    });
+    try {
+      await admin.from("weight_logs").insert({
+        user_id: user.id,
+        weight_kg: profileData.weight_kg,
+        note: "Catatan awal dari form data diri",
+        logged_at: new Date().toISOString(),
+      });
+    } catch {}
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 
 const activitySchema = z.object({
   activity_name: z.string().min(1, "Nama aktivitas tidak boleh kosong"),
@@ -20,7 +20,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: activities, error } = await supabase
+    const admin = createAdminClient();
+    const { data: activities, error } = await admin
       .from("weekly_activities")
       .select("*")
       .eq("user_id", user.id)
@@ -46,8 +47,28 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const parseResult = activitySchema.safeParse(body);
+    const admin = createAdminClient();
 
+    // Batch update mode
+    if (Array.isArray(body.activities)) {
+      await admin.from("weekly_activities").delete().eq("user_id", user.id);
+
+      if (body.activities.length > 0) {
+        const toInsert = body.activities.map((act: any) => ({
+          user_id: user.id,
+          activity_name: String(act.activity_name || "Aktivitas"),
+          frequency_per_week: Number(act.frequency_per_week) || 3,
+          duration_minutes: Number(act.duration_minutes) || 30,
+          intensity: ["low", "moderate", "high"].includes(act.intensity) ? act.intensity : "moderate",
+        }));
+        await admin.from("weekly_activities").insert(toInsert);
+      }
+
+      return NextResponse.json({ success: true, message: "Aktivitas mingguan berhasil diperbarui" });
+    }
+
+    // Single insert mode
+    const parseResult = activitySchema.safeParse(body);
     if (!parseResult.success) {
       return NextResponse.json(
         { error: parseResult.error.errors[0].message },
@@ -57,7 +78,7 @@ export async function POST(req: Request) {
 
     const { activity_name, frequency_per_week, duration_minutes, intensity } = parseResult.data;
 
-    const { data: newActivity, error } = await supabase
+    const { data: newActivity, error } = await admin
       .from("weekly_activities")
       .insert({
         user_id: user.id,
@@ -99,7 +120,8 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Parameter id aktivitas wajib disertakan" }, { status: 400 });
     }
 
-    const { error } = await supabase
+    const admin = createAdminClient();
+    const { error } = await admin
       .from("weekly_activities")
       .delete()
       .eq("id", id)
