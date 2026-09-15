@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from "@/lib/gemini/client";
+import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL, resolveSafeGeminiModel } from "@/lib/gemini/client";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -86,20 +86,29 @@ export async function GET(req: Request) {
     const admin = createAdminClient();
     let logs: any[] = [];
 
-    // Attempt query with logged_at first (schema standard)
+    // Attempt 1: Query food_logs with both timestamp columns and joined items
     let res: any = await admin
       .from("food_logs")
-      .select("id, logged_at, ai_response_json, total_kcal, food_log_items(*)")
+      .select("id, logged_at, created_at, ai_response_json, total_kcal, food_log_items(*)")
       .eq("user_id", user.id)
       .order("logged_at", { ascending: true });
 
+    // Attempt 2: If joined query or logged_at order failed, query food_logs standalone
     if (res.error) {
-      // Fallback to created_at
+      console.warn("[food-log GET] Join query failed, falling back to food_logs standalone:", res.error.message);
       res = await admin
         .from("food_logs")
-        .select("id, created_at, ai_response_json, total_kcal, food_log_items(*)")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true });
+        .select("id, logged_at, created_at, ai_response_json, total_kcal")
+        .eq("user_id", user.id);
+    }
+
+    // Attempt 3: General fallback
+    if (res.error) {
+      console.warn("[food-log GET] Standalone query failed, trying simple select:", res.error.message);
+      res = await admin
+        .from("food_logs")
+        .select("*")
+        .eq("user_id", user.id);
     }
 
     if (res.data && Array.isArray(res.data)) {
@@ -111,13 +120,20 @@ export async function GET(req: Request) {
       for (const log of logs) {
         const timestamp = log.logged_at || log.created_at;
         if (date && timestamp) {
-          const logUtcDate = timestamp.split("T")[0];
-          const dateObj = new Date(timestamp);
-          const wibDateObj = new Date(dateObj.getTime() + 7 * 60 * 60 * 1000);
-          const logWibDate = wibDateObj.toISOString().split("T")[0];
+          const dateStr = String(timestamp);
+          const rawDatePart = dateStr.split(/[T\s]/)[0];
 
-          // Filter by date across UTC or WIB date boundaries
-          if (logUtcDate !== date && logWibDate !== date) {
+          let wibDatePart = "";
+          try {
+            const d = new Date(timestamp);
+            if (!isNaN(d.getTime())) {
+              const wibTime = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+              wibDatePart = wibTime.toISOString().split("T")[0];
+            }
+          } catch {}
+
+          // Filter by date across raw date, UTC, or WIB date boundaries
+          if (rawDatePart !== date && wibDatePart !== date) {
             continue;
           }
         }
@@ -472,18 +488,18 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
       }
       contents.push(promptText);
 
-      // Models to try in priority order
+      // Models to try in priority order with safe mapping
       const candidateModels = [
-        effectiveModel.startsWith("gemini-") ? effectiveModel : PRIMARY_GEMINI_MODEL,
+        resolveSafeGeminiModel(effectiveModel),
         PRIMARY_GEMINI_MODEL,
         FALLBACK_GEMINI_MODEL,
-        "gemini-2.5-flash"
+        "gemini-2.5-flash",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentCandidate of candidateModels) {
         try {
           const response = await gemini.models.generateContent({
-            model: currentCandidate,
+            model: resolveSafeGeminiModel(currentCandidate),
             contents,
             config: {
               responseMimeType: "application/json",

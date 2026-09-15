@@ -18,46 +18,28 @@ export const GEMINI_MODELS: GeminiModelInfo[] = [
   // Google Gemini Series
   {
     id: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Google Stable)",
+    label: "Gemini 2.5 Flash (Google Default)",
     shortName: "GEMINI 2.5 FLASH",
     badge: "RECOMMENDED",
-    description: "Model stabil resmi Google dengan latensi super rendah dan ketersediaan kapasitas 99.9%.",
+    description: "Model multimodal turbo resmi Google dengan latensi super rendah dan ketersediaan kapasitas 99.9%.",
     provider: "google",
     envKeyName: "GEMINI_API_KEY",
   },
   {
-    id: "gemini-3.8-flash",
-    label: "Gemini 3.8 Flash (Google)",
-    shortName: "GEMINI 3.8 FLASH",
-    badge: "TURBO",
-    description: "Multimodal turbo cerdas dengan latensi seimbang dan penalaran gizi tinggi.",
+    id: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro (Google Reasoning)",
+    shortName: "GEMINI 2.5 PRO",
+    badge: "PRO REASON",
+    description: "Model penalaran tingkat tinggi Google untuk audit makronutrisi dan metabolisme kompleks.",
     provider: "google",
     envKeyName: "GEMINI_API_KEY",
   },
   {
-    id: "gemini-3.7-flash",
-    label: "Gemini 3.7 Flash (Google)",
-    shortName: "GEMINI 3.7 FLASH",
+    id: "gemini-2.0-flash",
+    label: "Gemini 2.0 Flash (Google Ultra-Fast)",
+    shortName: "GEMINI 2.0 FLASH",
     badge: "FAST",
     description: "Model ultra-cepat responsif untuk inferensi cepat porsi dan gramatur makanan.",
-    provider: "google",
-    envKeyName: "GEMINI_API_KEY",
-  },
-  {
-    id: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash (Google)",
-    shortName: "GEMINI 3.6 FLASH",
-    badge: "LEGACY",
-    description: "Model stabil teruji untuk lingkungan jaringan dengan bandwidth rendah.",
-    provider: "google",
-    envKeyName: "GEMINI_API_KEY",
-  },
-  {
-    id: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro (Google Preview)",
-    shortName: "GEMINI 3.1 PRO",
-    badge: "PREVIEW",
-    description: "Model penalaran tingkat tinggi untuk analisis makronutrisi kompleks.",
     provider: "google",
     envKeyName: "GEMINI_API_KEY",
   },
@@ -123,12 +105,24 @@ export function useSelectedAiModel() {
 
     const readActiveModel = () => {
       const saved = localStorage.getItem("chai_ai_model");
+      // Auto-migrate legacy fictional 3.x models to default
+      if (saved && saved.startsWith("gemini-3")) {
+        localStorage.setItem("chai_ai_model", DEFAULT_MODEL_ID);
+        document.cookie = `chai_ai_model=${encodeURIComponent(DEFAULT_MODEL_ID)}; path=/; max-age=31536000; SameSite=Lax`;
+        setModelId(DEFAULT_MODEL_ID);
+        return;
+      }
       if (saved && GEMINI_MODELS.some((m) => m.id === saved)) {
         setModelId(saved);
       } else {
         const cookieMatch = document.cookie.match(/(?:^|;\s*)chai_ai_model=([^;]+)/);
         if (cookieMatch && cookieMatch[1]) {
           const cookieVal = decodeURIComponent(cookieMatch[1]);
+          if (cookieVal.startsWith("gemini-3")) {
+            document.cookie = `chai_ai_model=${encodeURIComponent(DEFAULT_MODEL_ID)}; path=/; max-age=31536000; SameSite=Lax`;
+            setModelId(DEFAULT_MODEL_ID);
+            return;
+          }
           if (GEMINI_MODELS.some((m) => m.id === cookieVal)) {
             setModelId(cookieVal);
           }

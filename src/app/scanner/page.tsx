@@ -30,7 +30,8 @@ import {
   X,
   Plus,
   Utensils,
-  ScanLine
+  ScanLine,
+  RefreshCw
 } from "lucide-react";
 
 import { ProgramType } from "@/types/database";
@@ -284,52 +285,72 @@ export default function TrackingMakananPage() {
     }
   }, []);
 
-  // Fetch logged foods from database whenever selectedDate changes
-  useEffect(() => {
-    const fetchDateLogs = async () => {
-      try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
-        // If not logged in, rely solely on localStorage — never query or overwrite local data
-        if (!token) return;
+  const [isSyncing, setIsSyncing] = useState(false);
 
-        const res = await fetch(`/api/food-log?date=${selectedDate}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.items)) {
-            setLogsByDate(prev => {
-              const localItems = prev[selectedDate] || [];
+  // Robust cross-device sync with cloud database
+  const syncDateLogs = async (silent = false) => {
+    if (!silent) setIsSyncing(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
-              // Case A: Server returned items -> Merge authoritative server items with any unsynced local items
-              if (data.items.length > 0) {
-                const serverItemNames = new Set(data.items.map((it: any) => String(it.food_name).toLowerCase().trim()));
-                const unsyncedLocal = localItems.filter(
-                  (local: any) => !serverItemNames.has(String(local.food_name).toLowerCase().trim())
-                );
-                const merged = [...data.items, ...unsyncedLocal];
-                const updated = { ...prev, [selectedDate]: merged };
-                localStorage.setItem("chai_food_logs_by_date", JSON.stringify(updated));
-                return updated;
-              }
+      const res = await fetch(`/api/food-log?date=${selectedDate}`, {
+        headers,
+        credentials: "include",
+      });
 
-              // Case B: Server returned empty array, but user has existing local items
-              // CRITICAL: DO NOT overwrite or wipe out local user logs!
-              if (localItems.length > 0) {
-                return prev;
-              }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.items)) {
+          setLogsByDate(prev => {
+            const localItems = prev[selectedDate] || [];
 
-              // Case C: Both are empty
-              const updated = { ...prev, [selectedDate]: [] };
+            // If server returned records, merge them with local items
+            if (data.items.length > 0) {
+              const serverItemNames = new Set(data.items.map((it: any) => String(it.food_name).toLowerCase().trim()));
+              const unsyncedLocal = localItems.filter(
+                (local: any) => !serverItemNames.has(String(local.food_name).toLowerCase().trim())
+              );
+              const merged = [...data.items, ...unsyncedLocal];
+              const updated = { ...prev, [selectedDate]: merged };
               localStorage.setItem("chai_food_logs_by_date", JSON.stringify(updated));
               return updated;
+            }
+
+            // If server returned 0 items but local has items, preserve local
+            if (localItems.length > 0) {
+              return prev;
+            }
+
+            return prev;
+          });
+
+          if (!silent && data.items.length > 0) {
+            setActionFeedback({
+              type: "success",
+              msg: `Sinkronisasi cloud berhasil: ${data.items.length} menu makanan berhasil dimuat!`,
             });
           }
         }
-      } catch {}
+      }
+    } catch (err: any) {
+      console.warn("[scanner] Sync cloud logs failed:", err.message);
+    } finally {
+      if (!silent) setIsSyncing(false);
+    }
+  };
+
+  // Fetch logged foods from database whenever selectedDate changes or window gains focus
+  useEffect(() => {
+    syncDateLogs(true);
+
+    const handleWindowFocus = () => {
+      syncDateLogs(true);
     };
 
-    fetchDateLogs();
+    window.addEventListener("focus", handleWindowFocus);
+    return () => window.removeEventListener("focus", handleWindowFocus);
   }, [selectedDate]);
 
   // Save logs to localStorage helper
@@ -1335,9 +1356,21 @@ export default function TrackingMakananPage() {
                     DAFTAR MAKANAN TERCATAT ({currentDayLogs.length})
                   </h3>
                 </div>
-                <span className="font-mono text-[10px] text-outline">
-                  {selectedDate}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => syncDateLogs(false)}
+                    disabled={isSyncing}
+                    title="Sinkronkan catatan makanan dengan database cloud"
+                    className="px-2.5 py-1 rounded hud-card border hud-border hover:border-primary/60 text-slate-300 hover:text-white flex items-center gap-1.5 text-[10px] font-mono transition-all disabled:opacity-50 shadow-sm"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin text-primary" : ""}`} />
+                    <span>{isSyncing ? "Menyinkronkan..." : "Sinkronkan Cloud"}</span>
+                  </button>
+                  <span className="font-mono text-[10px] text-outline bg-black/30 px-2 py-0.5 rounded border hud-border">
+                    {selectedDate}
+                  </span>
+                </div>
               </div>
 
               {currentDayLogs.length === 0 ? (
