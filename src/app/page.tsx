@@ -35,29 +35,51 @@ import {
 export default function DashboardPage() {
   const router = useRouter();
   const { isUltraman } = useTacticalTheme();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [telemetry, setTelemetry] = useState<any | null>(null);
 
-  // Auto-redirect to /auth if not logged in (Requirement: initial entry is Login & Registration)
+  // Verify session and onboarding completeness
   useEffect(() => {
-    const token = localStorage.getItem("chai_auth_token");
-    if (!token) {
-      router.replace("/auth");
-      return;
-    }
-
-    const fetchSummary = async () => {
+    const verifyStatus = async () => {
       try {
-        const res = await fetch("/api/dashboard/summary", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setTelemetry(data);
+        const res = await fetch("/api/auth/status");
+        if (res.status === 401) {
+          // Invalid or expired session -> redirect to /auth
+          router.replace("/auth");
+          return;
         }
-      } catch {}
+        if (!res.ok) {
+          router.replace("/auth");
+          return;
+        }
+
+        const data = await res.json();
+        // Valid session, but profile is incomplete -> redirect to /profile
+        if (!data.has_profile) {
+          router.replace("/profile");
+          return;
+        }
+        // Valid session and profile complete, but no active program -> redirect to /program
+        if (!data.has_program) {
+          router.replace("/program");
+          return;
+        }
+
+        // All onboarding steps completed -> render Dashboard
+        setIsCheckingAuth(false);
+
+        // Fetch dashboard telemetry
+        const summaryRes = await fetch("/api/dashboard/summary");
+        if (summaryRes.ok) {
+          const summaryData = await summaryRes.json();
+          setTelemetry(summaryData);
+        }
+      } catch {
+        setIsCheckingAuth(false);
+      }
     };
-    fetchSummary();
+
+    verifyStatus();
   }, [router]);
 
   const dailyHistory = telemetry?.daily_history || [
@@ -84,22 +106,39 @@ export default function DashboardPage() {
   const remainingKcal = Math.max(0, targetKcal - consumedKcal);
   const isExpired = telemetry?.program_status?.isExpired || false;
 
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center hud-surface-bg font-mono text-xs p-4">
+        <div className="hud-card border rounded-xl p-8 flex flex-col items-center gap-4 text-center max-w-sm shadow-2xl">
+          <div className="w-12 h-12 rounded-full hud-card-high border hud-border flex items-center justify-center animate-spin">
+            <span className="text-xl">⚡</span>
+          </div>
+          <div>
+            <span className="hud-hero-text font-bold block uppercase tracking-wider text-sm">
+              MEMVERIFIKASI PROTOKOL HUNTER...
+            </span>
+            <span className="text-[10px] text-outline block mt-1">
+              Mengecek izin akses biometrik & sesi aktif
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* 6-Month Lockout Gate Interlock */}
       <LockoutGate isExpired={isExpired} />
 
-      {/* Slide-over Tactical Sidebar with custom sidebar-icon.png */}
-      <TacticalSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-
       {/* HUD Header with custom logo.png & sidebar trigger */}
-      <TacticalHeader activeTab="dashboard" onOpenSidebar={() => setSidebarOpen(true)} />
+      <TacticalHeader activeTab="dashboard" />
 
       {/* Live Telemetry Ticker */}
       <TelemetryTicker />
 
       {/* Main HUD Viewport: Responsive 3-Column Command Center */}
-      <main className="flex-1 w-full max-w-[1920px] mx-auto p-4 md:p-6 space-y-6">
+      <main className="flex-1 w-full max-w-[1920px] mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8 space-y-5 sm:space-y-6">
         
         {/* Dashboard Progress Title Header */}
         <div className="hud-card border rounded p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg border-primary/30">

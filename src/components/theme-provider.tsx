@@ -9,12 +9,17 @@ interface ThemeContextType {
   isUltraman: boolean;
   toggleTheme: () => void;
   setTheme: (theme: TacticalTheme) => void;
+  isSidebarOpen: boolean;
+  openSidebar: () => void;
+  closeSidebar: () => void;
+  toggleSidebar: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<TacticalTheme>("godzilla");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -51,6 +56,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme(nextTheme);
   };
 
+  const openSidebar = () => setIsSidebarOpen(true);
+  const closeSidebar = () => setIsSidebarOpen(false);
+  const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
+
   return (
     <ThemeContext.Provider
       value={{
@@ -58,6 +67,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         isUltraman: theme === "ultraman",
         toggleTheme,
         setTheme,
+        isSidebarOpen,
+        openSidebar,
+        closeSidebar,
+        toggleSidebar,
       }}
     >
       {children}

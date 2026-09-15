@@ -3,6 +3,7 @@ import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MobileTacticalDock } from "@/components/hud/mobile-dock";
+import { TacticalSidebar } from "@/components/hud/sidebar";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -19,6 +20,11 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "CALORIE HUNTER AI // TACTICAL HUD [GODZILLA VS ULTRAMAN]",
   description: "Tactical metabolic energy & calorie hunting HUD powered by deterministic Mifflin-St Jeor and Gemini AI.",
+  icons: {
+    icon: "/sidebar-icon.png",
+    shortcut: "/sidebar-icon.png",
+    apple: "/sidebar-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -33,6 +39,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           {children}
+          <TacticalSidebar />
           <MobileTacticalDock />
         </ThemeProvider>
       </body>

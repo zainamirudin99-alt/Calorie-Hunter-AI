@@ -99,12 +99,10 @@ export default function ProgramSelectionPage() {
     setFeedback(null);
 
     try {
-      const token = localStorage.getItem("chai_auth_token");
       const res = await fetch("/api/programs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ program_type: selectedType }),
       });
@@ -147,10 +145,10 @@ export default function ProgramSelectionPage() {
 
   return (
     <div className="min-h-screen flex flex-col justify-between">
-      <TacticalHeader activeTab="profile" />
+      <TacticalHeader activeTab="program" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8">
         {/* Header Title */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 mb-6 border-b hud-border">
           <div className="flex items-center gap-3">

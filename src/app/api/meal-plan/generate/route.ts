@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from "@/lib/gemini/client";
+import { gemini } from "@/lib/gemini/client";
 import { createServerClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const mealSchema = z.object({
   meal_name: z.string(),
@@ -34,28 +35,90 @@ const mealPlanResponseSchema = z.object({
   days: z.array(daySchema),
 });
 
-import { checkRateLimit } from "@/lib/rate-limit";
+// Official GenAI structured responseSchema for 7-day meal plan
+const mealPlanGeminiSchema = {
+  type: "OBJECT",
+  properties: {
+    summary: { type: "STRING" },
+    target_daily_kcal: { type: "NUMBER" },
+    weekly_split: {
+      type: "OBJECT",
+      properties: {
+        protein_pct: { type: "NUMBER" },
+        carbs_pct: { type: "NUMBER" },
+        fat_pct: { type: "NUMBER" },
+      },
+      required: ["protein_pct", "carbs_pct", "fat_pct"],
+    },
+    days: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          day_number: { type: "INTEGER" },
+          day_name: { type: "STRING" },
+          total_day_kcal: { type: "NUMBER" },
+          meals: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                meal_name: { type: "STRING" },
+                time_slot: { type: "STRING" },
+                estimated_kcal: { type: "NUMBER" },
+                macros: {
+                  type: "OBJECT",
+                  properties: {
+                    carbs_g: { type: "NUMBER" },
+                    protein_g: { type: "NUMBER" },
+                    fat_g: { type: "NUMBER" },
+                  },
+                  required: ["carbs_g", "protein_g", "fat_g"],
+                },
+                suggested_menu: {
+                  type: "ARRAY",
+                  items: { type: "STRING" },
+                },
+                tips: { type: "STRING" },
+              },
+              required: ["meal_name", "time_slot", "estimated_kcal", "macros", "suggested_menu"],
+            },
+          },
+        },
+        required: ["day_number", "day_name", "total_day_kcal", "meals"],
+      },
+    },
+  },
+  required: ["summary", "target_daily_kcal", "weekly_split", "days"],
+};
 
 export async function POST(req: Request) {
   try {
     const ip = req.headers.get("x-forwarded-for") || "client-local";
-    const rl = checkRateLimit(`meal-plan:${ip}`, { limit: 6, windowMs: 60 * 1000 });
+    const rl = checkRateLimit(`meal-plan:${ip}`, { limit: 10, windowMs: 60 * 1000 });
     if (!rl.success) {
       return NextResponse.json(
-        { error: "Batas permintaan meal plan terlampaui. Harap tunggu sebentar sebelum regenerasi menu." },
+        { error: "Batas permintaan meal plan terlampaui. Harap tunggu 1 menit sebelum regenerasi menu." },
         { status: 429 }
       );
     }
-    const supabase = createServerClient(req);
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    // Default mock context for preview if not yet fully authenticated in Supabase
+    let requestBody: any = {};
+    try {
+      requestBody = await req.json();
+    } catch {}
+
+    const supabase = createServerClient(req);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Default context
     let profile = {
       height_cm: 175,
       weight_kg: 70,
       age: 25,
       gender: "male",
       activity_level: "moderate",
+      preferred_gemini_model: "gemini-3.8-flash",
     };
     let program = {
       id: "demo-prog",
@@ -69,10 +132,18 @@ export async function POST(req: Request) {
       const { data: userProgram } = await supabase.from("programs").select("*").eq("user_id", user.id).eq("status", "active").single();
       const { data: userActivities } = await supabase.from("weekly_activities").select("*").eq("user_id", user.id);
       
-      if (userProfile) profile = userProfile;
+      if (userProfile) profile = { ...profile, ...userProfile };
       if (userProgram) program = userProgram;
       if (userActivities) activities = userActivities;
     }
+
+    // Step 7: Resolve selected Gemini model (from body, profile, cookie, or default)
+    const cookieHeader = req.headers.get("cookie") || "";
+    const cookieModelMatch = cookieHeader.match(/(?:^|;\s*)chai_ai_model=([^;]+)/);
+    const selectedModel = 
+      requestBody?.preferred_model ||
+      profile.preferred_gemini_model ||
+      (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : "gemini-3.8-flash");
 
     const prompt = `
 Anda adalah AI Ahli Gizi & Nutrisi Olahraga untuk sistem CALORIE HUNTER AI.
@@ -85,67 +156,65 @@ Buatkan rencana makan mingguan (7 hari lengkap: Senin s/d Minggu) dengan informa
 Instruksi menu:
 - Gunakan bahan makanan lokal Indonesia yang mudah didapat, bergizi seimbang, dan tinggi protein untuk mendukung program.
 - Tiap hari bagi menjadi 4 waktu makan: Sarapan (08:00), Makan Siang (13:00), Snack/Katalis Energi (16:30), dan Makan Malam (19:30).
-- Output WAJIB berupa JSON murni sesuai skema:
-{
-  "summary": "Ringkasan strategi nutrisi mingguan",
-  "target_daily_kcal": ${program.target_daily_kcal},
-  "weekly_split": { "protein_pct": 35, "carbs_pct": 45, "fat_pct": 20 },
-  "days": [
-    {
-      "day_number": 1,
-      "day_name": "Senin",
-      "total_day_kcal": 1950,
-      "meals": [
-        {
-          "meal_name": "Sarapan",
-          "time_slot": "08:00",
-          "estimated_kcal": 450,
-          "macros": { "carbs_g": 50, "protein_g": 30, "fat_g": 12 },
-          "suggested_menu": ["Oatmeal dengan susu almond dan pisang", "2 butir telur rebus"],
-          "tips": "Konsumsi air putih 500ml sebelum makan"
-        }
-      ]
-    }
-  ]
-}
+- Berikan saran tips taktis hidrasi & pemulihan energi pada setiap waktu makan.
 `;
 
     let generatedJson: any = null;
-    let modelUsed = PRIMARY_GEMINI_MODEL;
+    let isFallback = false;
+    let fallbackMessage: string | null = null;
 
-    try {
-      if (process.env.GEMINI_API_KEY) {
-        // Call Gemini API with structured JSON response
+    // Step 4: Reliable Gemini call with thinking_level HIGH, responseSchema, and 3x retry + backoff
+    if (process.env.GEMINI_API_KEY) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const response = await gemini.models.generateContent({
-            model: PRIMARY_GEMINI_MODEL,
+            model: selectedModel,
             contents: prompt,
             config: {
               responseMimeType: "application/json",
+              responseSchema: mealPlanGeminiSchema,
+              thinkingConfig: {
+                thinkingLevel: "HIGH" as any,
+              },
             },
           });
+
           const text = response.text || "";
-          generatedJson = JSON.parse(text);
-        } catch (err) {
-          // Fallback model
-          modelUsed = FALLBACK_GEMINI_MODEL;
-          const response = await gemini.models.generateContent({
-            model: FALLBACK_GEMINI_MODEL,
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-            },
-          });
-          const text = response.text || "";
-          generatedJson = JSON.parse(text);
+          const parsed = JSON.parse(text);
+          const validated = mealPlanResponseSchema.parse(parsed);
+          generatedJson = validated;
+          break; // Success, exit retry loop
+        } catch (err: any) {
+          console.warn(`[Gemini MealPlan] Attempt ${attempt} with ${selectedModel} failed:`, err.message);
+          if (attempt < 3) {
+            // Exponential backoff: 1s, 2s
+            await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
         }
       }
-    } catch (aiErr) {
-      console.warn("Gemini API call failed, generating deterministic fallback meal plan:", aiErr);
     }
 
-    // High quality tactical deterministic fallback if API Key is not set or quota reached
+    // If all 3 retries failed, check for last cached meal plan in DB
+    if (!generatedJson && user && program.id !== "demo-prog") {
+      const { data: lastPlan } = await supabase
+        .from("meal_plans")
+        .select("plan_json")
+        .eq("program_id", program.id)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastPlan?.plan_json) {
+        generatedJson = lastPlan.plan_json;
+        isFallback = true;
+        fallbackMessage = "Panggilan AI mencapai batas retry. Menampilkan rencana makan terakhir yang tersimpan.";
+      }
+    }
+
+    // High quality tactical deterministic fallback if no AI or DB plan available
     if (!generatedJson || !generatedJson.days) {
+      isFallback = true;
+      fallbackMessage = "Sistem AI sedang sibuk atau kuota tercapai. Menampilkan rencana makan deterministik cadangan.";
       const target = program.target_daily_kcal;
       const bBreakfast = Math.round(target * 0.25);
       const bLunch = Math.round(target * 0.35);
@@ -175,7 +244,7 @@ Instruksi menu:
               time_slot: "13:00",
               estimated_kcal: bLunch,
               macros: { carbs_g: Math.round(bLunch * 0.11), protein_g: Math.round(bLunch * 0.09), fat_g: Math.round(bLunch * 0.03) },
-              suggested_menu: ["Nasi merah 150g", "Dada ayam panggang 150g", "Tumis buncis & wortel tanpa minyak berlebih"],
+              suggested_menu: ["Nasi merah 150g", "Dada ayam panggang 150g", "Tumis buncis & wortel"],
               tips: "Makan perlahan untuk memaksimalkan sinyal kenyang leptin.",
             },
             {
@@ -199,24 +268,25 @@ Instruksi menu:
       };
     }
 
-    // Validate with Zod
     const validated = mealPlanResponseSchema.parse(generatedJson);
 
-    // Save to Supabase if valid program exists
-    if (user && program.id !== "demo-prog") {
+    // Save newly generated AI plan to Supabase if not a fallback
+    if (user && program.id !== "demo-prog" && !isFallback) {
       const today = new Date().toISOString().split("T")[0];
       await supabase.from("meal_plans").insert({
         program_id: program.id,
         week_start_date: today,
         plan_json: validated,
-        model_used: modelUsed,
+        model_used: selectedModel,
       });
     }
 
     return NextResponse.json({
       success: true,
       meal_plan: validated,
-      model_used: modelUsed,
+      model_used: selectedModel,
+      is_fallback: isFallback,
+      fallback_message: fallbackMessage,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from "@/lib/gemini/client";
 import { createServerClient } from "@/lib/supabase/server";
-
 import { checkRateLimit } from "@/lib/rate-limit";
 
 const nutritionItemSchema = z.object({
@@ -30,22 +29,153 @@ const geminiNutritionResponseSchema = z.object({
   notes: z.string().optional().default(""),
 });
 
+// Official GenAI structured responseSchema for Food Scan
+const foodScanGeminiSchema = {
+  type: "OBJECT",
+  properties: {
+    items: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          food_name: { type: "STRING" },
+          estimated_weight_g: { type: "NUMBER" },
+          calories_kcal: { type: "NUMBER" },
+          macros: {
+            type: "OBJECT",
+            properties: {
+              carbs_g: { type: "NUMBER" },
+              protein_g: { type: "NUMBER" },
+              fat_g: { type: "NUMBER" },
+              fiber_g: { type: "NUMBER" },
+              sugar_g: { type: "NUMBER" },
+            },
+            required: ["carbs_g", "protein_g", "fat_g"],
+          },
+          micros: {
+            type: "OBJECT",
+            properties: {
+              sodium_mg: { type: "NUMBER" },
+              potassium_mg: { type: "NUMBER" },
+              vitamin_c_mg: { type: "NUMBER" },
+            },
+          },
+          confidence: { type: "NUMBER" },
+        },
+        required: ["food_name", "estimated_weight_g", "calories_kcal", "macros"],
+      },
+    },
+    total_calories_kcal: { type: "NUMBER" },
+    notes: { type: "STRING" },
+  },
+  required: ["items", "total_calories_kcal"],
+};
+
 export async function POST(req: Request) {
   try {
     const ip = req.headers.get("x-forwarded-for") || "client-local";
-    const rl = checkRateLimit(`food-log:${ip}`, { limit: 15, windowMs: 60 * 1000 });
+    const rl = checkRateLimit(`food-log:${ip}`, { limit: 20, windowMs: 60 * 1000 });
     if (!rl.success) {
       return NextResponse.json(
         { error: "Batas permintaan terlampaui. Silakan tunggu 1 menit sebelum menganalisis makanan lagi." },
         { status: 429 }
       );
     }
+
     const supabase = createServerClient(req);
     const { data: { user } } = await supabase.auth.getUser();
 
+    // Resolve selected Gemini model from cookie or header
+    const cookieHeader = req.headers.get("cookie") || "";
+    const cookieModelMatch = cookieHeader.match(/(?:^|;\s*)chai_ai_model=([^;]+)/);
+    const selectedModel = cookieModelMatch
+      ? decodeURIComponent(cookieModelMatch[1])
+      : PRIMARY_GEMINI_MODEL;
+
+    const contentType = req.headers.get("content-type") || "";
+
+    // -------------------------------------------------------------------------
+    // ACTION: SAVE (JSON commit to food_logs and food_log_items)
+    // -------------------------------------------------------------------------
+    if (contentType.includes("application/json")) {
+      const body = await req.json();
+      const action = body.action || "save";
+
+      if (action === "save") {
+        const { items, photo_url, input_type, raw_text_input, log_date } = body;
+        if (!Array.isArray(items) || items.length === 0) {
+          return NextResponse.json({ error: "Daftar item makanan kosong" }, { status: 400 });
+        }
+
+        const totalKcal = items.reduce((sum: number, it: any) => sum + (Number(it.calories_kcal) || 0), 0);
+        let foodLogId = "log-" + Date.now();
+
+        if (user) {
+          const { data: activeProg } = await supabase
+            .from("programs")
+            .select("id, target_daily_kcal")
+            .eq("user_id", user.id)
+            .eq("status", "active")
+            .maybeSingle();
+
+          const { data: insertedLog, error: logError } = await supabase
+            .from("food_logs")
+            .insert({
+              user_id: user.id,
+              program_id: activeProg?.id || null,
+              input_type: input_type || "manual_text",
+              photo_url: photo_url || null,
+              raw_text_input: raw_text_input || null,
+              ai_response_json: { items, total_calories_kcal: totalKcal },
+              total_kcal: totalKcal,
+              created_at: log_date ? `${log_date}T12:00:00Z` : new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+
+          if (!logError && insertedLog) {
+            foodLogId = insertedLog.id;
+            const dailyTarget = activeProg?.target_daily_kcal || 1950;
+            const itemsToInsert = items.map((item: any) => ({
+              food_log_id: insertedLog.id,
+              food_name: item.food_name,
+              weight_g: Number(item.estimated_weight_g) || 100,
+              calories_kcal: Number(item.calories_kcal) || 0,
+              carbs_g: Number(item.macros?.carbs_g) || 0,
+              protein_g: Number(item.macros?.protein_g) || 0,
+              fat_g: Number(item.macros?.fat_g) || 0,
+              fiber_g: Number(item.macros?.fiber_g) || 0,
+              sugar_g: Number(item.macros?.sugar_g) || 0,
+              micros_json: item.micros || {},
+              pct_of_daily_kcal: Number(((Number(item.calories_kcal || 0) / dailyTarget) * 100).toFixed(1)),
+            }));
+
+            await supabase.from("food_log_items").insert(itemsToInsert);
+          }
+        }
+
+        const targetDailyKcal = 1950;
+        const remainingKcal = Math.max(0, targetDailyKcal - totalKcal);
+
+        return NextResponse.json({
+          success: true,
+          action: "save",
+          food_log_id: foodLogId,
+          total_kcal: totalKcal,
+          target_daily_kcal: targetDailyKcal,
+          remaining_daily_kcal: remainingKcal,
+          message: "Catatan makanan berhasil disimpan ke database.",
+        });
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ACTION: ANALYZE (Multimodal / Text AI analysis with preview)
+    // -------------------------------------------------------------------------
     const formData = await req.formData();
     const manualText = (formData.get("raw_text_input") as string | null)?.trim() || null;
     const photoFile = formData.get("photo") as File | null;
+    const action = (formData.get("action") as string | null) || "analyze";
 
     // XOR Invariant enforcement: exactly one must be non-null
     if ((!photoFile && !manualText) || (photoFile && manualText)) {
@@ -85,106 +215,80 @@ export async function POST(req: Request) {
     }
 
     const promptText = `
-Identifikasi setiap jenis makanan pada ${photoFile ? "foto makanan" : "deskripsi teks"} ini: "${manualText || "Analisis foto yang dilampirkan"}", 
+Identifikasi setiap jenis makanan pada ${photoFile ? "foto makanan" : "deskripsi teks"} ini: "${manualText || "Analisis foto makanan yang dilampirkan"}", 
 estimasikan berat dalam gram, lalu hitung kalori dan kandungan makro (karbohidrat, protein, lemak, serat, gula dalam gram) serta mikro nutrisinya (natrium, kalium, vitamin C dalam mg). 
-Jika ragu, tetap berikan estimasi terbaik berdasarkan porsi makanan umum Indonesia dan tandai nilai confidence yang sesuai (antara 0.1 s/d 1.0) — jangan pernah mengosongkan field.
-
-Format WAJIB JSON murni sesuai skema:
-{
-  "items": [
-    {
-      "food_name": "Nama Makanan",
-      "estimated_weight_g": 150,
-      "calories_kcal": 280,
-      "macros": { "carbs_g": 35, "protein_g": 22, "fat_g": 6, "fiber_g": 3, "sugar_g": 2 },
-      "micros": { "sodium_mg": 320, "potassium_mg": 210, "vitamin_c_mg": 5 },
-      "confidence": 0.92
-    }
-  ],
-  "total_calories_kcal": 280,
-  "notes": "Estimasi porsi standar"
-}
+Jika ragu, berikan estimasi terbaik berdasarkan porsi makanan umum Indonesia dan confidence score (0.1 s/d 1.0) — jangan pernah mengosongkan field.
 `;
 
     let aiResult: any = null;
-    let modelUsed = PRIMARY_GEMINI_MODEL;
+    let modelUsed = selectedModel;
+    let isFallback = false;
 
-    // Call Gemini multimodal if API key is present
+    // Step 5: Reliable Gemini call with thinking_level HIGH, responseSchema, and 3x retry + backoff
     if (process.env.GEMINI_API_KEY) {
-      try {
-        const contents: any[] = [];
-        if (base64Image) {
-          contents.push({
-            inlineData: {
-              data: base64Image,
-              mimeType: imageMimeType,
-            },
-          });
-        }
-        contents.push(promptText);
+      const contents: any[] = [];
+      if (base64Image) {
+        contents.push({
+          inlineData: {
+            data: base64Image,
+            mimeType: imageMimeType,
+          },
+        });
+      }
+      contents.push(promptText);
 
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const response = await gemini.models.generateContent({
-            model: PRIMARY_GEMINI_MODEL,
+            model: selectedModel,
             contents,
             config: {
               responseMimeType: "application/json",
+              responseSchema: foodScanGeminiSchema,
+              thinkingConfig: {
+                thinkingLevel: "HIGH" as any,
+              },
             },
           });
-          aiResult = JSON.parse(response.text || "");
-        } catch (mErr) {
-          modelUsed = FALLBACK_GEMINI_MODEL;
-          const response = await gemini.models.generateContent({
-            model: FALLBACK_GEMINI_MODEL,
-            contents,
-            config: {
-              responseMimeType: "application/json",
-            },
-          });
-          aiResult = JSON.parse(response.text || "");
+
+          const text = response.text || "";
+          aiResult = JSON.parse(text);
+          break; // Success!
+        } catch (err: any) {
+          console.warn(`[Gemini FoodScan] Attempt ${attempt} failed:`, err.message);
+          if (attempt < 3) {
+            // Exponential backoff: 1s, 2s
+            await new Promise((res) => setTimeout(res, 1000 * Math.pow(2, attempt - 1)));
+          }
         }
-      } catch (err) {
-        console.warn("Gemini multimodal call failed, using intelligent deterministic analyzer:", err);
       }
     }
 
-    // High quality fallback nutrition data
+    // Deterministic fallback if all AI attempts failed
     if (!aiResult || !aiResult.items || aiResult.items.length === 0) {
-      const query = manualText || "Nasi Ayam Bakar";
+      isFallback = true;
+      const query = manualText || "Porsi Ransum Taktis";
       aiResult = {
         items: [
           {
-            food_name: query.includes("ayam") ? "Dada Ayam Bakar Madu" : "Porsi Ransum Tempur Lengkap",
-            estimated_weight_g: 180,
-            calories_kcal: 340,
-            macros: { carbs_g: 12, protein_g: 42, fat_g: 14, fiber_g: 2, sugar_g: 6 },
-            micros: { sodium_mg: 380, potassium_mg: 450, vitamin_c_mg: 8 },
-            confidence: 0.88,
-          },
-          {
-            food_name: "Nasi Merah Organik",
-            estimated_weight_g: 150,
-            calories_kcal: 165,
-            macros: { carbs_g: 35, protein_g: 4, fat_g: 1, fiber_g: 3, sugar_g: 0 },
-            micros: { sodium_mg: 5, potassium_mg: 80, vitamin_c_mg: 0 },
-            confidence: 0.95,
+            food_name: query.toLowerCase().includes("ayam") ? "Dada Ayam Panggang Taktis" : query,
+            estimated_weight_g: 160,
+            calories_kcal: 290,
+            macros: { carbs_g: 10, protein_g: 38, fat_g: 8, fiber_g: 2, sugar_g: 1 },
+            micros: { sodium_mg: 320, potassium_mg: 390, vitamin_c_mg: 5 },
+            confidence: 0.85,
           },
         ],
-        total_calories_kcal: 505,
-        notes: "Analisis sensor taktis porsi standar",
+        total_calories_kcal: 290,
+        notes: "Analisis estimasi porsi standar deterministik (Fallback)",
       };
     }
 
     const validated = geminiNutritionResponseSchema.parse(aiResult);
-
-    // Calculate total kcal
     const totalKcal = validated.items.reduce((sum, item) => sum + item.calories_kcal, 0);
 
-    let foodLogId = "log-" + Date.now();
-
-    // Database insertion if authenticated
-    if (user) {
-      // Find active program
+    // If request explicitly requested save immediately (legacy compatibility)
+    if (action === "save_immediate" && user) {
       const { data: activeProg } = await supabase
         .from("programs")
         .select("id, target_daily_kcal")
@@ -192,8 +296,7 @@ Format WAJIB JSON murni sesuai skema:
         .eq("status", "active")
         .maybeSingle();
 
-      // Insert food_logs
-      const { data: insertedLog, error: logError } = await supabase
+      const { data: insertedLog } = await supabase
         .from("food_logs")
         .insert({
           user_id: user.id,
@@ -207,10 +310,7 @@ Format WAJIB JSON murni sesuai skema:
         .select("id")
         .single();
 
-      if (!logError && insertedLog) {
-        foodLogId = insertedLog.id;
-
-        // Insert normalized food_log_items
+      if (insertedLog) {
         const dailyTarget = activeProg?.target_daily_kcal || 1950;
         const itemsToInsert = validated.items.map((item) => ({
           food_log_id: insertedLog.id,
@@ -225,23 +325,21 @@ Format WAJIB JSON murni sesuai skema:
           micros_json: item.micros,
           pct_of_daily_kcal: Number(((item.calories_kcal / dailyTarget) * 100).toFixed(1)),
         }));
-
         await supabase.from("food_log_items").insert(itemsToInsert);
       }
     }
 
-    // Calculate remaining daily budget (Assuming 1950 target default)
-    const targetDailyKcal = 1950;
-    const remainingKcal = Math.max(0, targetDailyKcal - totalKcal);
-
     return NextResponse.json({
       success: true,
-      food_log_id: foodLogId,
-      data: validated,
+      action: "analyze",
+      preview: validated,
+      data: validated, // backward compatibility
       total_kcal: totalKcal,
-      target_daily_kcal: targetDailyKcal,
-      remaining_daily_kcal: remainingKcal,
+      model_used: modelUsed,
+      is_fallback: isFallback,
+      photo_url: photoUrl,
       input_type: photoFile ? "photo" : "manual_text",
+      raw_text_input: manualText,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

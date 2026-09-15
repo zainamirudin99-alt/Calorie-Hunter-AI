@@ -56,10 +56,7 @@ export default function ActivitiesPage() {
   useEffect(() => {
     const fetchActivities = async () => {
       try {
-        const token = localStorage.getItem("chai_auth_token");
-        const res = await fetch("/api/activities", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await fetch("/api/activities");
         if (res.ok) {
           const data = await res.json();
           if (data.activities && data.activities.length > 0) {
@@ -89,12 +86,10 @@ export default function ActivitiesPage() {
     };
 
     try {
-      const token = localStorage.getItem("chai_auth_token");
       const res = await fetch("/api/activities", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           activity_name: name,
@@ -126,10 +121,8 @@ export default function ActivitiesPage() {
   const handleDelete = async (id: string) => {
     setActivities(activities.filter((a) => a.id !== id));
     try {
-      const token = localStorage.getItem("chai_auth_token");
       await fetch(`/api/activities?id=${id}`, {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
     } catch {
       // Ignored in offline fallback
@@ -141,7 +134,7 @@ export default function ActivitiesPage() {
       <TacticalHeader activeTab="activities" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-6">
+      <main className="flex-1 w-full max-w-5xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 mb-6 border-b hud-border">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text">

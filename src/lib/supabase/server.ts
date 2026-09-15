@@ -38,6 +38,14 @@ export function createServerClient(req?: Request) {
     const authHeader = req.headers.get("authorization");
     if (authHeader) {
       headers["Authorization"] = authHeader;
+    } else {
+      const cookieHeader = req.headers.get("cookie");
+      if (cookieHeader) {
+        const match = cookieHeader.match(/(?:^|;\s*)chai_auth_token=([^;]+)/);
+        if (match && match[1]) {
+          headers["Authorization"] = `Bearer ${decodeURIComponent(match[1])}`;
+        }
+      }
     }
   }
 

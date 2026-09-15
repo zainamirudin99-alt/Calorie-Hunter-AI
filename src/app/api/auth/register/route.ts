@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       password,
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: "Registrasi berhasil! Mengalihkan ke pengisian data diri...",
       session: sessionData?.session || null,
@@ -92,6 +92,18 @@ export async function POST(req: Request) {
         username: cleanUsername,
       },
     });
+
+    if (sessionData?.session?.access_token) {
+      response.cookies.set("chai_auth_token", sessionData.session.access_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+        sameSite: "lax",
+      });
+    }
+
+    return response;
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Internal server error" },

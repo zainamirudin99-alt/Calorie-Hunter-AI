@@ -28,28 +28,38 @@ export default function MealPlanPage() {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isFallback, setIsFallback] = useState(false);
+  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
+  const [modelUsed, setModelUsed] = useState<string>("gemini-3.8-flash");
 
   const fetchMealPlan = async () => {
     setLoading(true);
     setFeedback(null);
+    setIsFallback(false);
+    setFallbackMessage(null);
     try {
-      const token = localStorage.getItem("chai_auth_token");
       const res = await fetch("/api/meal-plan/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
 
       const data = await res.json();
       if (data.meal_plan) {
         setMealPlan(data.meal_plan);
+        setIsFallback(Boolean(data.is_fallback));
+        setFallbackMessage(data.fallback_message || null);
+        if (data.model_used) setModelUsed(data.model_used);
+
         localStorage.setItem("chai_cached_meal_plan", JSON.stringify(data.meal_plan));
-        setFeedback("Rencana makan 7 hari berhasil disintesis oleh AI!");
+        if (!data.is_fallback) {
+          setFeedback(`Rencana makan 7 hari berhasil disintesis oleh ${data.model_used || "AI"}!`);
+        }
       }
     } catch {
-      // Fallback
+      setIsFallback(true);
+      setFallbackMessage("Tidak dapat menghubungi server AI. Menampilkan rencana makan cadangan.");
     } finally {
       setLoading(false);
     }
@@ -75,7 +85,7 @@ export default function MealPlanPage() {
       <TacticalHeader activeTab="meal-plan" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8">
         {/* Header Strip */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 mb-6 border-b hud-border">
           <div className="flex items-center gap-3">
@@ -84,10 +94,10 @@ export default function MealPlanPage() {
             </div>
             <div>
               <h1 className="font-display text-base font-bold hud-text uppercase">
-                TACTICAL MEAL PLAN DECK (7 HARI)
+                RENCANA MAKAN TAKTIS AI (MEAL PLAN)
               </h1>
               <span className="font-mono text-[10px] text-outline uppercase block">
-                {isUltraman ? "SCIENCE PATROL NUTRITION STRATEGY" : "TITAN BIO-FEEDING FORMULA"}
+                {isUltraman ? "SCIENCE PATROL NUTRITION STRATEGY" : "TITAN PROTOCOL RATIONS"}
               </span>
             </div>
           </div>
@@ -102,7 +112,34 @@ export default function MealPlanPage() {
           </button>
         </div>
 
-        {feedback && (
+        {/* AI Fallback Notice with prominent 'Coba Lagi' button */}
+        {isFallback && (
+          <div className="mb-6 p-4 rounded bg-amber-500/10 border-2 border-amber-500/40 text-amber-300 font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+              <div>
+                <span className="font-bold block uppercase tracking-wider text-[11px] text-amber-400">
+                  MODE CADANGAN DETERMINISTIK AKTIF
+                </span>
+                <span className="text-[11px] text-slate-200 block mt-0.5">
+                  {fallbackMessage || "Panggilan AI mencapai batas retry / kuota. Menu di bawah menggunakan formula nutrisi cadangan standar."}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={fetchMealPlan}
+              disabled={loading}
+              className="px-4 py-2 rounded hud-card-high border border-amber-400/60 hover:border-amber-400 text-amber-300 font-bold uppercase text-xs flex items-center gap-2 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              <span>COBA LAGI SINTESIS AI</span>
+            </button>
+          </div>
+        )}
+
+        {feedback && !isFallback && (
           <div className="mb-6 p-3 rounded bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 font-mono text-xs flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4" />
             <span>{feedback}</span>
@@ -111,7 +148,7 @@ export default function MealPlanPage() {
 
         {/* AI Strategy Summary Card */}
         {mealPlan && (
-          <div className="hud-card border rounded p-5 mb-6 relative shadow-lg">
+          <div className="hud-card border rounded p-4 sm:p-5 mb-6 relative shadow-lg">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b hud-border pb-3 mb-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 hud-beam-text" />
@@ -131,20 +168,29 @@ export default function MealPlanPage() {
         )}
 
         {/* Day Selector Navigation Strip */}
-        <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-6">
-          {["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"].map((day, idx) => (
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-6">
+          {[
+            { full: "Senin", short: "SEN" },
+            { full: "Selasa", short: "SEL" },
+            { full: "Rabu", short: "RAB" },
+            { full: "Kamis", short: "KAM" },
+            { full: "Jumat", short: "JUM" },
+            { full: "Sabtu", short: "SAB" },
+            { full: "Minggu", short: "MIN" },
+          ].map((item, idx) => (
             <button
-              key={day}
+              key={item.full}
               onClick={() => setSelectedDayIndex(idx)}
-              className={`p-2 sm:p-3 rounded border text-center font-mono transition-all cursor-pointer ${
+              className={`p-1.5 sm:p-3 rounded border text-center font-mono transition-all cursor-pointer ${
                 selectedDayIndex === idx
                   ? "hud-card-high border-primary ring-1 ring-primary shadow"
                   : "hud-card-inner hud-border hud-text-muted hover:border-primary/40 hover:hud-text"
               }`}
             >
-              <span className="text-[10px] text-outline block uppercase">HARI 0{idx + 1}</span>
-              <span className={`text-xs font-bold uppercase block mt-0.5 ${selectedDayIndex === idx ? "hud-hero-text" : ""}`}>
-                {day}
+              <span className="text-[8px] sm:text-[10px] text-outline block uppercase leading-none">H-0{idx + 1}</span>
+              <span className={`text-[10px] sm:text-xs font-bold uppercase block mt-0.5 sm:mt-1 ${selectedDayIndex === idx ? "hud-hero-text" : ""}`}>
+                <span className="sm:hidden">{item.short}</span>
+                <span className="hidden sm:inline">{item.full}</span>
               </span>
             </button>
           ))}

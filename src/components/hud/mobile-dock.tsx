@@ -7,7 +7,6 @@ import {
   LayoutDashboard, 
   UtensilsCrossed, 
   Camera, 
-  Activity, 
   Target,
   User
 } from "lucide-react";
@@ -18,6 +17,11 @@ export function MobileTacticalDock() {
   const router = useRouter();
   const { isUltraman } = useTacticalTheme();
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Do not render dock on login / registration pages
+  if (pathname === "/auth" || pathname === "/login") {
+    return null;
+  }
 
   // Hidden file input for direct native camera capture
   const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,7 +51,7 @@ export function MobileTacticalDock() {
 
   return (
     <>
-      {/* Hidden Native Camera Input */}
+      {/* Hidden Native Camera Input with capture="environment" for mobile camera */}
       <input
         ref={cameraInputRef}
         type="file"
@@ -60,7 +64,7 @@ export function MobileTacticalDock() {
       {/* Mobile Fixed Bottom Tactical Navigation Dock */}
       <nav 
         aria-label="Mobile Tactical Dock"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 hud-card-high border-t hud-border backdrop-blur-lg px-2 py-1.5 shadow-2xl theme-transition"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 hud-card-high border-t hud-border backdrop-blur-xl px-2 py-1.5 shadow-2xl theme-transition"
       >
         <div className="flex items-center justify-around max-w-md mx-auto">
           {navItems.map((item) => {
@@ -69,7 +73,7 @@ export function MobileTacticalDock() {
 
             if (item.isAction) {
               return (
-                <div key={item.label} className="relative -top-4 flex flex-col items-center">
+                <div key={item.label} className="relative -top-3 flex flex-col items-center">
                   <button
                     onClick={() => {
                       if (cameraInputRef.current) {
@@ -78,12 +82,13 @@ export function MobileTacticalDock() {
                         router.push("/scanner");
                       }
                     }}
-                    className="w-13 h-13 rounded-full hud-hero-bg border-2 border-primary/50 flex items-center justify-center shadow-lg transition-transform active:scale-95 group focus:outline-none"
+                    className="w-12 h-12 rounded-full hud-hero-bg border-2 border-primary/50 flex items-center justify-center shadow-lg transition-transform active:scale-95 group focus:outline-none cursor-pointer"
                     title="Buka Kamera Native / Scan Ransum"
+                    aria-label="Kamera Scanner"
                   >
-                    <Camera className="w-6 h-6 text-black dark:text-black group-hover:scale-110 transition-transform" />
+                    <Camera className="w-5 h-5 text-black dark:text-black group-hover:scale-110 transition-transform" />
                   </button>
-                  <span className="font-mono text-[9px] font-bold hud-hero-text mt-1 uppercase">
+                  <span className="font-mono text-[9px] font-bold hud-hero-text mt-0.5 uppercase">
                     SCAN AI
                   </span>
                 </div>
@@ -94,13 +99,13 @@ export function MobileTacticalDock() {
               <Link
                 key={item.label}
                 href={item.href}
-                className={`flex flex-col items-center justify-center py-1 px-2 rounded font-mono text-[10px] transition-all ${
+                className={`flex flex-col items-center justify-center py-1 px-2.5 rounded font-mono text-[10px] transition-all ${
                   isActive
                     ? "hud-hero-text font-bold scale-105"
                     : "hud-text-muted hover:hud-text"
                 }`}
               >
-                <Icon className={`w-5 h-5 mb-0.5 ${isActive ? "hud-hero-text" : ""}`} />
+                <Icon className={`w-4 h-4 mb-0.5 ${isActive ? "hud-hero-text" : ""}`} />
                 <span>{item.label}</span>
               </Link>
             );

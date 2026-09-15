@@ -7,12 +7,11 @@ import { useTacticalTheme } from "@/components/theme-provider";
 import { 
   Flame, 
   ScanLine, 
-  Bell, 
   Menu, 
   X,
   ArrowLeftRight,
   User,
-  LogOut
+  LayoutDashboard
 } from "lucide-react";
 
 interface HeaderProps {
@@ -21,56 +20,62 @@ interface HeaderProps {
 }
 
 export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: HeaderProps) {
-  const { theme, isUltraman, toggleTheme } = useTacticalTheme();
+  const { isUltraman, toggleTheme, toggleSidebar } = useTacticalTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const handleSidebarClick = () => {
+    if (onOpenSidebar) {
+      onOpenSidebar();
+    } else {
+      toggleSidebar();
+    }
+  };
+
   return (
-    <header className="w-full px-4 md:px-6 py-2.5 flex items-center justify-between border-b hud-border hud-card z-50 sticky top-0 theme-transition shadow-lg">
-      <div className="flex items-center gap-3 lg:gap-6">
-        {/* Sidebar Trigger using the user's sidebar icon */}
+    <header className="w-full px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 flex items-center justify-between border-b hud-border hud-card z-50 sticky top-0 theme-transition shadow-lg">
+      <div className="flex items-center gap-2 sm:gap-3 lg:gap-5 min-w-0">
+        {/* Tactical Command Deck Trigger */}
         <button
-          onClick={onOpenSidebar || (() => setMobileMenuOpen(!mobileMenuOpen))}
-          className="w-9 h-9 rounded hud-card-inner border hud-border flex items-center justify-center hover:border-primary transition-all group shrink-0 overflow-hidden p-1 shadow-sm"
-          title="Buka Navigasi Taktis"
+          onClick={handleSidebarClick}
+          className="h-8 sm:h-9 px-2 sm:px-2.5 rounded hud-card-inner border hud-border flex items-center gap-1.5 hover:border-primary transition-all group shrink-0 shadow-sm cursor-pointer"
+          title="Buka Tactical Command Deck"
+          aria-label="Buka Command Deck"
         >
-          <Image
-            src="/sidebar-icon.png"
-            alt="Sidebar Menu"
-            width={26}
-            height={26}
-            className="object-contain group-hover:scale-110 transition-transform"
-          />
+          <Menu className="w-4 h-4 hud-hero-text group-hover:scale-110 transition-transform shrink-0" />
+          <span className="hidden sm:inline font-mono text-[10px] hud-text-muted group-hover:hud-text uppercase font-bold tracking-wider">
+            DECK
+          </span>
         </button>
 
-        {/* Brand & System Logo using the user's custom logo.png */}
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="relative w-10 h-10 rounded hud-card-high border hud-border flex items-center justify-center overflow-hidden p-1 group-hover:scale-105 transition-transform shrink-0 shadow-md">
+        {/* Brand & System Logo */}
+        <Link href="/" className="flex items-center gap-2 sm:gap-3 group shrink-0 min-w-0">
+          <div className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-lg hud-card-high border hud-border flex items-center justify-center overflow-hidden p-1 group-hover:scale-105 transition-transform shrink-0 shadow-md">
             <Image
               src="/logo.png"
               alt="Calorie Hunter AI Logo"
-              width={36}
-              height={36}
+              width={32}
+              height={32}
               className="object-contain"
               priority
             />
           </div>
-          <div>
-            <div className="text-sm sm:text-base font-bold hud-hero-text tracking-wider flex items-center gap-2 font-display leading-tight">
-              CALORIE HUNTER AI
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded hud-card-high hud-beam-text border hud-border hidden sm:inline-block">
-                {isUltraman ? "ULTRA.v7.0" : "KAIJU.v4.2"}
+          <div className="min-w-0">
+            <div className="text-xs sm:text-base font-bold hud-hero-text tracking-wide flex items-center gap-1.5 font-display leading-tight truncate">
+              <span className="truncate">CALORIE HUNTER</span>
+              <span className="text-[9px] sm:text-[10px] font-mono px-1 py-0.2 rounded hud-card-high hud-beam-text border hud-border hidden sm:inline-block shrink-0">
+                {isUltraman ? "ULTRA.v7" : "KAIJU.v4"}
               </span>
             </div>
-            <span className="text-[10px] font-mono block text-outline uppercase tracking-widest hidden md:block">
+            <span className="text-[9px] font-mono text-outline uppercase tracking-widest hidden md:block truncate">
               {isUltraman 
-                ? "SCIENCE PATROL COMMAND // MECHA SENSOR ACTIVE"
-                : "TACTICAL ENERGY HUD // SYSTEM READY"}
+                ? "SCIENCE PATROL // MECHA SENSOR"
+                : "TACTICAL ENERGY // SYSTEM READY"}
             </span>
           </div>
         </Link>
 
         {/* Desktop Tactical Navigation */}
-        <nav className="hidden xl:flex items-center gap-5 ml-4">
+        <nav className="hidden xl:flex items-center gap-5 ml-2">
           <Link
             href="/"
             className={`font-mono text-xs uppercase tracking-wider pb-1 transition-colors ${
@@ -130,27 +135,28 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
       </div>
 
       {/* Trailing Tactical Cluster & Dual Theme Switcher */}
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* INTERACTIVE DUAL THEME SWITCHER */}
         <button
           onClick={toggleTheme}
-          className="relative flex items-center gap-2 px-3 py-1.5 rounded border hud-border hud-card-high hover:border-primary transition-all duration-300 shadow-md group cursor-pointer"
+          className="relative flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded border hud-border hud-card-high hover:border-primary transition-all duration-300 shadow-md group cursor-pointer"
           title="Ganti Mode: Godzilla Titan (Dark) vs Ultraman Science Patrol (Light)"
+          aria-label="Ganti Tema"
         >
           {!isUltraman ? (
-            <span className="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400">
+            <span className="flex items-center gap-1 text-xs font-mono font-bold text-emerald-400">
               <span className="text-sm">🦖</span>
-              <span className="hidden lg:inline">GODZILLA MODE</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="hidden lg:inline text-[11px]">GODZILLA</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-xs font-mono font-bold text-red-600">
+            <span className="flex items-center gap-1 text-xs font-mono font-bold text-red-500">
               <span className="text-sm">⚡</span>
-              <span className="hidden lg:inline">ULTRAMAN MODE</span>
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
+              <span className="hidden lg:inline text-[11px]">ULTRAMAN</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
             </span>
           )}
-          <ArrowLeftRight className="w-3.5 h-3.5 text-outline group-hover:hud-hero-text transition-colors" />
+          <ArrowLeftRight className="w-3 h-3 text-outline group-hover:hud-hero-text transition-colors hidden sm:inline" />
         </button>
 
         {/* Telemetry Badges (Desktop) */}
@@ -158,94 +164,96 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
           <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
           <span className="font-mono text-xs hud-text font-bold">18 HARI STREAK</span>
           <span className="text-outline mx-1">|</span>
-          <span className="font-mono text-[11px] hud-beam-text uppercase">HARI 42/180 PROGRAM</span>
+          <span className="font-mono text-[11px] hud-beam-text uppercase">HARI 42/180</span>
         </div>
 
-        <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded hud-card-high border hud-border">
+        <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded hud-card-high border hud-border">
           <span className="text-xs font-mono hud-hero-text font-bold">LVL 42 // S-RANK</span>
         </div>
 
         {/* Scan Ration Action Button */}
         <Link
           href="/scanner"
-          className="hud-clip-chamfer hud-hero-bg px-3 sm:px-4 py-2 font-mono text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 shadow-lg hover:opacity-90 shrink-0"
+          className="hud-clip-chamfer hud-hero-bg px-2.5 sm:px-3.5 py-1.5 sm:py-2 font-mono text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 shadow-md hover:opacity-90 shrink-0"
+          title="Scan Ransum AI"
         >
-          <ScanLine className="w-4 h-4" />
+          <ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span className="hidden sm:inline">SCAN RATION</span>
-          <span className="sm:hidden">SCAN</span>
+          <span className="sm:hidden text-[11px]">SCAN</span>
         </Link>
 
-        {/* Auth / Profile quick trigger */}
+        {/* Hunter Profile Quick Link */}
         <Link
-          href="/auth"
-          className="w-8 h-8 rounded hud-card-inner border hud-border flex items-center justify-center hud-text-muted hover:hud-hero-text transition-colors"
-          title="Login / Register"
+          href="/profile"
+          className="w-7 h-7 sm:w-8 sm:h-8 rounded hud-card-inner border hud-border flex items-center justify-center hud-text-muted hover:hud-hero-text transition-colors shrink-0"
+          title="Data Diri & Profil Hunter"
+          aria-label="Profil Hunter"
         >
-          <User className="w-4 h-4" />
+          <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </Link>
 
-        {/* Mobile Menu Toggle Button */}
+        {/* Mobile Menu Dropdown Toggle */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="xl:hidden w-8 h-8 rounded flex items-center justify-center hud-text-muted hover:hud-hero-text transition-colors"
-          aria-label="Toggle menu"
+          className="xl:hidden w-7 h-7 sm:w-8 sm:h-8 rounded flex items-center justify-center hud-text-muted hover:hud-hero-text transition-colors shrink-0"
+          aria-label="Menu navigasi cepat"
         >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          {mobileMenuOpen ? <X className="w-4 h-4 sm:w-5 sm:h-5" /> : <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5" />}
         </button>
       </div>
 
       {/* Collapsible Mobile Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="xl:hidden absolute top-full left-0 w-full hud-card border-b hud-border px-6 py-4 flex flex-col gap-3 font-mono text-xs uppercase tracking-wider theme-transition shadow-2xl z-50">
+        <div className="xl:hidden absolute top-full left-0 w-full hud-card border-b hud-border px-4 sm:px-6 py-4 flex flex-col gap-2.5 font-mono text-xs uppercase tracking-wider theme-transition shadow-2xl z-50 animate-in fade-in-50 duration-150">
           <Link 
             href="/" 
             onClick={() => setMobileMenuOpen(false)}
-            className="hud-hero-text font-bold py-1 border-b border-dashed hud-border flex items-center justify-between"
+            className="hud-hero-text font-bold py-1.5 border-b border-dashed hud-border flex items-center justify-between"
           >
-            <span>► Dashboard HUD</span>
+            <span>► Dashboard Progress</span>
             <span className="text-[10px] text-outline font-mono">[01]</span>
           </Link>
           <Link 
             href="/scanner" 
             onClick={() => setMobileMenuOpen(false)}
-            className="hud-text-muted hover:hud-text py-1 flex items-center justify-between"
+            className="hud-text-muted hover:hud-text py-1.5 flex items-center justify-between"
           >
-            <span>► AI Monster Scanner</span>
+            <span>► Tracking Makanan (AI Scan)</span>
             <span className="text-[10px] text-outline font-mono">[02]</span>
+          </Link>
+          <Link 
+            href="/program" 
+            onClick={() => setMobileMenuOpen(false)}
+            className="hud-text-muted hover:hud-text py-1.5 flex items-center justify-between"
+          >
+            <span>► Pilih Program & TDEE</span>
+            <span className="text-[10px] text-outline font-mono">[03]</span>
           </Link>
           <Link 
             href="/meal-plan" 
             onClick={() => setMobileMenuOpen(false)}
-            className="hud-text-muted hover:hud-text py-1 flex items-center justify-between"
+            className="hud-text-muted hover:hud-text py-1.5 flex items-center justify-between"
           >
-            <span>► Meal Plan Deck</span>
-            <span className="text-[10px] text-outline font-mono">[03]</span>
-          </Link>
-          <Link 
-            href="/activities" 
-            onClick={() => setMobileMenuOpen(false)}
-            className="hud-text-muted hover:hud-text py-1 flex items-center justify-between"
-          >
-            <span>► Tactical Activities</span>
+            <span>► Rencana Makan AI</span>
             <span className="text-[10px] text-outline font-mono">[04]</span>
           </Link>
           <Link 
             href="/profile" 
             onClick={() => setMobileMenuOpen(false)}
-            className="hud-text-muted hover:hud-text py-1 flex items-center justify-between"
+            className="hud-text-muted hover:hud-text py-1.5 flex items-center justify-between"
           >
-            <span>► Hunter Profile</span>
+            <span>► Data Diri & Biometrik</span>
             <span className="text-[10px] text-outline font-mono">[05]</span>
           </Link>
           <Link 
-            href="/auth" 
+            href="/activities" 
             onClick={() => setMobileMenuOpen(false)}
-            className="hud-beam-text font-bold py-1 border-t border-dashed hud-border flex items-center justify-between"
+            className="hud-text-muted hover:hud-text py-1.5 flex items-center justify-between"
           >
-            <span>► Login / Registrasi</span>
-            <span className="text-[10px] text-outline font-mono">[AUTH]</span>
+            <span>► Aktivitas & Hobi</span>
+            <span className="text-[10px] text-outline font-mono">[06]</span>
           </Link>
-          <div className="pt-2 border-t hud-border flex items-center justify-between text-[11px] hud-text-muted">
+          <div className="pt-2 border-t hud-border flex items-center justify-between text-[10px] sm:text-[11px] hud-text-muted">
             <span>STREAK: 18 HARI</span>
             <span className="hud-hero-text font-bold">LVL 42 // S-RANK</span>
           </div>

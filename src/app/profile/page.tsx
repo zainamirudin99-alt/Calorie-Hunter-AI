@@ -23,8 +23,19 @@ import {
   Plus,
   Trash2,
   CheckSquare,
-  Square
+  Square,
+  Cpu,
+  RefreshCw,
+  AlertTriangle,
+  ShieldAlert
 } from "lucide-react";
+
+const GEMINI_MODELS = [
+  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (Default)", badge: "RECOMMENDED" },
+  { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash", badge: "FAST" },
+  { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", badge: "LEGACY" },
+  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)", badge: "PREVIEW" },
+];
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -36,6 +47,18 @@ export default function ProfilePage() {
   const [heightCm, setHeightCm] = useState<number>(175);
   const [weightKg, setWeightKg] = useState<number>(70);
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
+
+  // AI Model & Health State
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.8-flash");
+  const [aiHealth, setAiHealth] = useState<{
+    checking: boolean;
+    status: "online" | "rate_limited" | "error" | "no_key" | null;
+    latency_ms?: number;
+    message?: string;
+  }>({
+    checking: false,
+    status: null,
+  });
 
   // Activities section inside Onboarding
   const [activities, setActivities] = useState<Array<{
@@ -94,6 +117,60 @@ export default function ProfilePage() {
     setActivities(activities.filter(a => a.id !== id));
   };
 
+  // Load profile & model on mount
+  useEffect(() => {
+    const savedModel = localStorage.getItem("chai_ai_model");
+    if (savedModel && GEMINI_MODELS.some(m => m.id === savedModel)) {
+      setSelectedModel(savedModel);
+    }
+
+    fetch("/api/auth/status")
+      .then(res => res.json())
+      .then(data => {
+        if (data.profile) {
+          if (data.profile.full_name) setFullName(data.profile.full_name);
+          if (data.profile.gender) setGender(data.profile.gender);
+          if (data.profile.age) setAge(data.profile.age);
+          if (data.profile.height_cm) setHeightCm(data.profile.height_cm);
+          if (data.profile.weight_kg) setWeightKg(data.profile.weight_kg);
+          if (data.profile.activity_level) setActivityLevel(data.profile.activity_level);
+        }
+        if (data.preferred_gemini_model) {
+          setSelectedModel(data.preferred_gemini_model);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleModelChange = (newModel: string) => {
+    setSelectedModel(newModel);
+    localStorage.setItem("chai_ai_model", newModel);
+    document.cookie = `chai_ai_model=${encodeURIComponent(newModel)}; path=/; max-age=31536000; SameSite=Lax`;
+    checkAiHealth(newModel);
+  };
+
+  const checkAiHealth = async (modelToCheck?: string) => {
+    const model = modelToCheck || selectedModel;
+    setAiHealth({ checking: true, status: null });
+
+    try {
+      const res = await fetch(`/api/ai/health?model=${encodeURIComponent(model)}`);
+      const data = await res.json();
+      setAiHealth({
+        checking: false,
+        status: data.status,
+        latency_ms: data.latency_ms,
+        message: data.message,
+      });
+    } catch {
+      setAiHealth({
+        checking: false,
+        status: "error",
+        message: "Tidak dapat terhubung ke server AI Health Check.",
+      });
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -102,14 +179,11 @@ export default function ProfilePage() {
     const checkedActivities = activities.filter(a => a.checked);
 
     try {
-      const token = localStorage.getItem("chai_auth_token");
-      
       // Save profile
       await fetch("/api/profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           full_name: fullName,
@@ -118,6 +192,7 @@ export default function ProfilePage() {
           height_cm: Number(heightCm),
           weight_kg: Number(weightKg),
           activity_level: activityLevel,
+          preferred_gemini_model: selectedModel,
         }),
       });
 
@@ -128,7 +203,6 @@ export default function ProfilePage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({
               activity_name: act.activity_name,
@@ -193,24 +267,24 @@ export default function ProfilePage() {
       <TacticalHeader activeTab="profile" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-6">
+      <main className="flex-1 w-full max-w-5xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* Profile Form (Cols 1-7) */}
-          <div className="lg:col-span-7 hud-card border rounded p-6 relative shadow-xl theme-transition">
-            <div className="flex items-center justify-between pb-4 mb-6 border-b hud-border">
-              <div className="flex items-center gap-2.5">
-                <User className="w-5 h-5 hud-hero-text" />
+          <div className="lg:col-span-7 hud-card border rounded-lg p-4 sm:p-6 relative shadow-xl theme-transition">
+            <div className="flex items-center justify-between pb-3 sm:pb-4 mb-4 sm:mb-6 border-b hud-border">
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <User className="w-5 h-5 hud-hero-text shrink-0" />
                 <div>
-                  <h1 className="font-display text-base font-bold hud-text uppercase">
+                  <h1 className="font-display text-sm sm:text-base font-bold hud-text uppercase">
                     DATA DIRI BIOMETRIK HUNTER
                   </h1>
-                  <span className="font-mono text-[10px] text-outline uppercase block">
+                  <span className="font-mono text-[9px] sm:text-[10px] text-outline uppercase block">
                     {isUltraman ? "SCIENCE PATROL BIO-DATA" : "TITAN BIO-METRICS"}
                   </span>
                 </div>
               </div>
-              <span className="font-mono text-xs px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold">
+              <span className="font-mono text-[10px] sm:text-xs px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold">
                 FASE 1: AKTIF
               </span>
             </div>
@@ -221,7 +295,7 @@ export default function ProfilePage() {
                   ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-400"
                   : "bg-red-500/10 border border-red-500/40 text-red-400"
               }`}>
-                {feedback.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                {feedback.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
                 <span>{feedback.msg}</span>
               </div>
             )}
@@ -234,18 +308,18 @@ export default function ProfilePage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Captain Hayata / Kenjiro"
-                  className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
                 />
               </div>
 
               {/* Gender Selection */}
               <div>
                 <label className="block hud-text-muted uppercase mb-1.5">Jenis Kelamin</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={() => setGender("male")}
-                    className={`py-2 px-3 rounded border text-center font-bold uppercase transition-all ${
+                    className={`py-2 px-2 sm:px-3 rounded border text-center font-bold uppercase transition-all text-xs ${
                       gender === "male" 
                         ? "hud-hero-bg border-transparent shadow" 
                         : "hud-card-inner hud-border hud-text-muted hover:hud-text"
@@ -256,7 +330,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setGender("female")}
-                    className={`py-2 px-3 rounded border text-center font-bold uppercase transition-all ${
+                    className={`py-2 px-2 sm:px-3 rounded border text-center font-bold uppercase transition-all text-xs ${
                       gender === "female" 
                         ? "hud-hero-bg border-transparent shadow" 
                         : "hud-card-inner hud-border hud-text-muted hover:hud-text"
@@ -268,9 +342,9 @@ export default function ProfilePage() {
               </div>
 
               {/* Biometrics Grid */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <div>
-                  <label className="block hud-text-muted uppercase mb-1">Usia (Thn)</label>
+                  <label className="block hud-text-muted uppercase mb-1 text-[11px] truncate">Usia (Thn)</label>
                   <input
                     type="number"
                     min={10}
@@ -278,12 +352,12 @@ export default function ProfilePage() {
                     required
                     value={age}
                     onChange={(e) => setAge(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                    className="w-full px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block hud-text-muted uppercase mb-1">Tinggi (cm)</label>
+                  <label className="block hud-text-muted uppercase mb-1 text-[11px] truncate">Tinggi (cm)</label>
                   <input
                     type="number"
                     min={50}
@@ -291,12 +365,12 @@ export default function ProfilePage() {
                     required
                     value={heightCm}
                     onChange={(e) => setHeightCm(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                    className="w-full px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block hud-text-muted uppercase mb-1">Berat (kg)</label>
+                  <label className="block hud-text-muted uppercase mb-1 text-[11px] truncate">Berat (kg)</label>
                   <input
                     type="number"
                     min={20}
@@ -305,7 +379,7 @@ export default function ProfilePage() {
                     required
                     value={weightKg}
                     onChange={(e) => setWeightKg(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                    className="w-full px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
                   />
                 </div>
               </div>
@@ -570,6 +644,84 @@ export default function ProfilePage() {
               >
                 + ATUR AKTIVITAS
               </Link>
+            </div>
+
+            {/* AI Engine & Live Diagnostics Card (Requirement 7: Cek AI) */}
+            <div className="hud-card border rounded p-5 relative shadow-lg theme-transition space-y-3">
+              <div className="flex items-center justify-between border-b hud-border pb-3">
+                <div className="flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-amber-400" />
+                  <h2 className="font-display text-sm font-bold hud-text uppercase">
+                    ENGINE AI & CEK KESIAPAN
+                  </h2>
+                </div>
+                <span className="font-mono text-[9px] px-1.5 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold">
+                  GEMINI 3
+                </span>
+              </div>
+
+              <p className="font-mono text-xs text-outline leading-relaxed">
+                Pilih model kecerdasan buatan yang digunakan untuk pemindaian nutrisi dan perancangan menu makan, serta periksa ketersediaan layanannya secara live.
+              </p>
+
+              {/* Model Select */}
+              <div className="space-y-1.5 font-mono text-xs">
+                <label className="text-outline uppercase text-[10px] block">Model Aktif:</label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded hud-card-inner border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  {GEMINI_MODELS.map((m) => (
+                    <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Cek AI Button */}
+              <button
+                type="button"
+                onClick={() => checkAiHealth()}
+                disabled={aiHealth.checking}
+                className="w-full py-2 px-3 rounded hud-card-high border border-primary/50 hover:border-primary font-mono text-xs hud-hero-text font-bold uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${aiHealth.checking ? "animate-spin" : ""}`} />
+                <span>{aiHealth.checking ? "MENGECEK RESPONS AI..." : "CEK STATUS KONEKSI AI"}</span>
+              </button>
+
+              {/* Health Result */}
+              {aiHealth.status && (
+                <div className={`p-3 rounded font-mono text-xs space-y-1.5 transition-all ${
+                  aiHealth.status === "online"
+                    ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-300"
+                    : aiHealth.status === "rate_limited"
+                    ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
+                    : "bg-red-500/10 border border-red-500/40 text-red-300"
+                }`}>
+                  <div className="flex items-center justify-between font-bold">
+                    <div className="flex items-center gap-2">
+                      {aiHealth.status === "online" && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      {aiHealth.status === "rate_limited" && <AlertTriangle className="w-4 h-4 text-amber-400" />}
+                      {aiHealth.status === "error" && <AlertCircle className="w-4 h-4 text-red-400" />}
+                      {aiHealth.status === "no_key" && <ShieldAlert className="w-4 h-4 text-amber-400" />}
+                      <span>
+                        {aiHealth.status === "online" && "AI AKTIF & SIAP DIGUNAKAN"}
+                        {aiHealth.status === "rate_limited" && "BATAS KUOTA AI TERCAPAI"}
+                        {aiHealth.status === "error" && "AI TIDAK DAPAT DIAKSES"}
+                        {aiHealth.status === "no_key" && "GEMINI_API_KEY TIDAK TERDETEKSI"}
+                      </span>
+                    </div>
+                    {aiHealth.latency_ms !== undefined && (
+                      <span className="text-[10px] font-mono opacity-80">{aiHealth.latency_ms}ms</span>
+                    )}
+                  </div>
+                  {aiHealth.message && (
+                    <p className="text-[11px] opacity-90 leading-tight">{aiHealth.message}</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

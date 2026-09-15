@@ -115,6 +115,7 @@ export default function TrackingMakananPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<any | null>(null);
+  const [editablePreviewItems, setEditablePreviewItems] = useState<any[]>([]);
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   // Program & Targets (TDEE from chosen program)
@@ -318,7 +319,7 @@ export default function TrackingMakananPage() {
 
   const canProcess = (inputMode === "photo" && selectedFile) || (inputMode === "manual_text" && manualText.trim().length > 0);
 
-  // Send to AI for Nutrition analysis
+  // Send to AI for Nutrition analysis (action: "analyze" only, no DB commit yet)
   const handleProcessAI = async () => {
     if (!canProcess) return;
     setLoading(true);
@@ -326,6 +327,7 @@ export default function TrackingMakananPage() {
     setActionFeedback(null);
 
     const formData = new FormData();
+    formData.append("action", "analyze");
     if (inputMode === "photo" && selectedFile) {
       formData.append("photo", selectedFile);
     } else if (inputMode === "manual_text" && manualText.trim()) {
@@ -333,10 +335,8 @@ export default function TrackingMakananPage() {
     }
 
     try {
-      const token = localStorage.getItem("chai_auth_token");
       const res = await fetch("/api/food-log", {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 
@@ -345,7 +345,30 @@ export default function TrackingMakananPage() {
         throw new Error(data.error || "Gagal menganalisis makanan");
       }
 
+      const rawItems = data.preview?.items || data.data?.items || [];
+      const formattedItems = rawItems.map((item: any) => ({
+        food_name: item.food_name || "Makanan",
+        estimated_weight_g: Number(item.estimated_weight_g) || 150,
+        calories_kcal: Number(item.calories_kcal) || 200,
+        macros: {
+          carbs_g: Number(item.macros?.carbs_g) || 0,
+          protein_g: Number(item.macros?.protein_g) || 0,
+          fat_g: Number(item.macros?.fat_g) || 0,
+          fiber_g: Number(item.macros?.fiber_g) || 0,
+          sugar_g: Number(item.macros?.sugar_g) || 0,
+        },
+        micros: item.micros || {},
+      }));
+
       setAnalysisResult(data);
+      setEditablePreviewItems(formattedItems);
+
+      if (data.is_fallback) {
+        setActionFeedback({
+          type: "error",
+          msg: "AI mengalami kendala/kuota terlampaui. Menampilkan estimasi awal yang dapat Anda edit sebelum disimpan.",
+        });
+      }
     } catch (err: any) {
       setErrorMsg(err.message || "Gagal memproses analisis sensor AI");
     } finally {
@@ -353,42 +376,143 @@ export default function TrackingMakananPage() {
     }
   };
 
-  // Save analyzed result into selectedDate
-  const handleSaveAnalyzedFood = () => {
-    if (!analysisResult?.data?.items) return;
+  // Helper to update a preview item field (name, grams, etc.)
+  const handleUpdatePreviewItem = (index: number, field: string, val: any) => {
+    setEditablePreviewItems((prev) => {
+      const copy = [...prev];
+      const target = { ...copy[index] };
 
-    const currentTime = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
-    const newItems: LoggedFoodItem[] = analysisResult.data.items.map((item: any, idx: number) => ({
-      id: "log-" + Date.now() + "-" + idx,
-      food_name: item.food_name,
-      estimated_weight_g: item.estimated_weight_g || 150,
-      calories_kcal: item.calories_kcal || 200,
-      time_logged: currentTime,
-      meal_slot: "Ransum Tempur",
-      macros: {
-        carbs_g: item.macros?.carbs_g || 0,
-        protein_g: item.macros?.protein_g || 0,
-        fat_g: item.macros?.fat_g || 0,
-        fiber_g: item.macros?.fiber_g || 0,
-        sugar_g: item.macros?.sugar_g || 0,
-      },
-      micros: item.micros || {},
-    }));
+      if (field === "estimated_weight_g") {
+        const newWeight = Math.max(1, Number(val) || 1);
+        const oldWeight = target.estimated_weight_g || 1;
+        const ratio = newWeight / oldWeight;
+        target.estimated_weight_g = newWeight;
+        target.calories_kcal = Math.round(target.calories_kcal * ratio);
+        target.macros = {
+          carbs_g: Math.round(target.macros.carbs_g * ratio),
+          protein_g: Math.round(target.macros.protein_g * ratio),
+          fat_g: Math.round(target.macros.fat_g * ratio),
+          fiber_g: Math.round((target.macros.fiber_g || 0) * ratio),
+          sugar_g: Math.round((target.macros.sugar_g || 0) * ratio),
+        };
+      } else if (field === "food_name") {
+        target.food_name = val;
+      } else if (field === "calories_kcal") {
+        target.calories_kcal = Number(val) || 0;
+      }
 
-    const updated = {
-      ...logsByDate,
-      [selectedDate]: [...(logsByDate[selectedDate] || []), ...newItems],
-    };
-
-    persistLogs(updated);
-    setAnalysisResult(null);
-    setSelectedFile(null);
-    setPreviewUrl(null);
-    setManualText("");
-    setActionFeedback({
-      type: "success",
-      msg: `Berhasil menambahkan ${newItems.length} item ke catatan ${formatIndonesianDate(selectedDate)}!`,
+      copy[index] = target;
+      return copy;
     });
+  };
+
+  const handleRemovePreviewItem = (index: number) => {
+    setEditablePreviewItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddPreviewItem = () => {
+    setEditablePreviewItems((prev) => [
+      ...prev,
+      {
+        food_name: "Item Tambahan",
+        estimated_weight_g: 100,
+        calories_kcal: 150,
+        macros: { carbs_g: 15, protein_g: 10, fat_g: 5, fiber_g: 1, sugar_g: 1 },
+        micros: {},
+      },
+    ]);
+  };
+
+  // Save analyzed and verified result into selectedDate + commit to DB
+  const handleSaveAnalyzedFood = async () => {
+    if (editablePreviewItems.length === 0) return;
+
+    setLoading(true);
+    try {
+      // Commit to Database
+      await fetch("/api/food-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          items: editablePreviewItems,
+          photo_url: analysisResult?.photo_url || null,
+          input_type: inputMode,
+          raw_text_input: manualText || null,
+          log_date: selectedDate,
+        }),
+      });
+
+      const currentTime = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
+      const newItems: LoggedFoodItem[] = editablePreviewItems.map((item: any, idx: number) => ({
+        id: "log-" + Date.now() + "-" + idx,
+        food_name: item.food_name,
+        estimated_weight_g: item.estimated_weight_g || 150,
+        calories_kcal: item.calories_kcal || 200,
+        time_logged: currentTime,
+        meal_slot: "Ransum Tempur",
+        macros: {
+          carbs_g: item.macros?.carbs_g || 0,
+          protein_g: item.macros?.protein_g || 0,
+          fat_g: item.macros?.fat_g || 0,
+          fiber_g: item.macros?.fiber_g || 0,
+          sugar_g: item.macros?.sugar_g || 0,
+        },
+        micros: item.micros || {},
+      }));
+
+      const updated = {
+        ...logsByDate,
+        [selectedDate]: [...(logsByDate[selectedDate] || []), ...newItems],
+      };
+
+      persistLogs(updated);
+      setAnalysisResult(null);
+      setEditablePreviewItems([]);
+      setSelectedFile(null);
+      setPreviewUrl(null);
+      setManualText("");
+      setActionFeedback({
+        type: "success",
+        msg: `Berhasil menyimpan ${newItems.length} item ke catatan ${formatIndonesianDate(selectedDate)}!`,
+      });
+    } catch {
+      // Still persist locally even if network fails
+      const currentTime = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
+      const newItems: LoggedFoodItem[] = editablePreviewItems.map((item: any, idx: number) => ({
+        id: "log-" + Date.now() + "-" + idx,
+        food_name: item.food_name,
+        estimated_weight_g: item.estimated_weight_g || 150,
+        calories_kcal: item.calories_kcal || 200,
+        time_logged: currentTime,
+        meal_slot: "Ransum Tempur",
+        macros: {
+          carbs_g: item.macros?.carbs_g || 0,
+          protein_g: item.macros?.protein_g || 0,
+          fat_g: item.macros?.fat_g || 0,
+          fiber_g: item.macros?.fiber_g || 0,
+          sugar_g: item.macros?.sugar_g || 0,
+        },
+        micros: item.micros || {},
+      }));
+
+      const updated = {
+        ...logsByDate,
+        [selectedDate]: [...(logsByDate[selectedDate] || []), ...newItems],
+      };
+      persistLogs(updated);
+      setAnalysisResult(null);
+      setEditablePreviewItems([]);
+      setSelectedFile(null);
+      setPreviewUrl(null);
+      setManualText("");
+      setActionFeedback({
+        type: "success",
+        msg: `Disimpan ke memori lokal: ${newItems.length} item pada ${formatIndonesianDate(selectedDate)}!`,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Edit item handler
@@ -426,7 +550,7 @@ export default function TrackingMakananPage() {
       <TacticalHeader activeTab="scanner" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8 space-y-5 sm:space-y-6">
         
         {/* ========================================================================= */}
         {/* HEADER: DATE NAVIGATION (TANGGAL, BULAN, TAHUN - BISA BESOK / KEMARIN)    */}
@@ -646,7 +770,12 @@ export default function TrackingMakananPage() {
               {/* Photo Upload Area */}
               {inputMode === "photo" && (
                 <div className="space-y-4">
-                  <div className="border-2 border-dashed hud-border rounded p-6 text-center hover:border-primary/60 transition-colors relative crt-scanlines overflow-hidden">
+                  <div 
+                    onClick={() => !previewUrl && cameraInputRef.current?.click()}
+                    className={`border-2 border-dashed hud-border rounded p-6 text-center hover:border-primary/60 transition-colors relative crt-scanlines overflow-hidden ${
+                      !previewUrl ? "cursor-pointer active:scale-[0.99]" : ""
+                    }`}
+                  >
                     {previewUrl ? (
                       <div className="relative h-60 w-full rounded overflow-hidden">
                         <img
@@ -656,8 +785,8 @@ export default function TrackingMakananPage() {
                         />
                         <button
                           type="button"
-                          onClick={() => { setSelectedFile(null); setPreviewUrl(null); }}
-                          className="absolute top-2 right-2 px-2 py-1 rounded bg-black/80 font-mono text-[10px] text-white border hud-border hover:bg-red-600"
+                          onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setPreviewUrl(null); }}
+                          className="absolute top-2 right-2 px-2.5 py-1 rounded bg-black/85 font-mono text-[10px] text-white border hud-border hover:bg-red-600 transition-colors cursor-pointer"
                         >
                           GANTI FOTO
                         </button>
@@ -670,13 +799,14 @@ export default function TrackingMakananPage() {
                         <div className="font-mono text-xs">
                           <span className="hud-text font-bold block">BIDIK ATAU UNGGAH RANSUM</span>
                           <span className="text-[10px] text-outline block mt-0.5">
-                            Kamera HP otomatis mendeteksi piring makanan Anda
+                            Ketuk untuk langsung buka Kamera HP atau pilih foto
                           </span>
                         </div>
                       </div>
                     )}
                   </div>
 
+                  {/* File Input for Gallery */}
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -685,19 +815,29 @@ export default function TrackingMakananPage() {
                     onChange={handleFileChange}
                   />
 
+                  {/* Native Mobile Camera Input with capture="environment" */}
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="py-2.5 px-3 rounded hud-card-high border hud-border font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-primary transition-all"
+                      className="py-2.5 px-3 rounded hud-card-high border hud-border font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-primary transition-all cursor-pointer"
                     >
-                      <Upload className="w-4 h-4" />
-                      <span>PILIH DARI GALERI</span>
+                      <Upload className="w-4 h-4 text-cyan-400" />
+                      <span>PILIH GALERI</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="py-2.5 px-3 rounded hud-card-high border hud-border font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-primary transition-all"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="py-2.5 px-3 rounded hud-card-high border border-emerald-500/50 bg-emerald-500/10 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-emerald-400 transition-all text-emerald-400 cursor-pointer shadow-md active:scale-98"
                     >
                       <Camera className="w-4 h-4" />
                       <span>KAMERA HP</span>
@@ -740,42 +880,114 @@ export default function TrackingMakananPage() {
               </button>
 
               {errorMsg && (
-                <div className="mt-3 p-2.5 rounded bg-red-500/10 border border-red-500/40 text-red-400 font-mono text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMsg}</span>
+                <div className="mt-3 p-3 rounded bg-red-500/10 border border-red-500/40 text-red-400 font-mono text-xs space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{errorMsg}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputMode("manual_text");
+                      setErrorMsg(null);
+                    }}
+                    className="w-full py-1.5 px-3 rounded hud-card-high border border-primary/40 font-mono text-[11px] hud-hero-text font-bold uppercase hover:bg-primary/20 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Type className="w-3.5 h-3.5" />
+                    <span>BERALIH KE INPUT TEKS MANUAL</span>
+                  </button>
                 </div>
               )}
 
-              {/* AI Analysis Preview Before Confirming Save */}
-              {analysisResult?.data && (
+              {/* AI Analysis Preview (EDITABLE) Before Confirming Save */}
+              {editablePreviewItems.length > 0 && (
                 <div className="mt-5 p-4 rounded hud-card-inner border-2 border-primary/50 space-y-3 bg-primary/5">
                   <div className="flex items-center justify-between border-b hud-border pb-2">
-                    <span className="font-mono text-xs font-bold hud-hero-text">
-                      HASIL ANALISIS SENSOR AI:
-                    </span>
+                    <div>
+                      <span className="font-mono text-xs font-bold hud-hero-text block">
+                        PREVIEW ANALISIS SENSOR (BISA DIEDIT):
+                      </span>
+                      <span className="text-[10px] text-outline block">
+                        Koreksi nama atau porsi gram jika estimasi AI sedikit meleset.
+                      </span>
+                    </div>
                     <span className="font-mono text-xs font-bold hud-text">
-                      TOTAL {analysisResult.data.total_calories_kcal} KCAL
+                      TOTAL {editablePreviewItems.reduce((acc, it) => acc + (Number(it.calories_kcal) || 0), 0)} KCAL
                     </span>
                   </div>
 
-                  <div className="space-y-2">
-                    {analysisResult.data.items?.map((item: any, i: number) => (
-                      <div key={i} className="p-2 rounded hud-card border hud-border font-mono text-xs flex items-center justify-between">
-                        <div>
-                          <span className="font-bold block">{item.food_name}</span>
-                          <span className="text-[10px] text-outline block">
-                            {item.estimated_weight_g}g • P: {item.macros?.protein_g}g • C: {item.macros?.carbs_g}g • F: {item.macros?.fat_g}g
-                          </span>
+                  {/* Editable Items List */}
+                  <div className="space-y-2.5">
+                    {editablePreviewItems.map((item: any, i: number) => (
+                      <div key={i} className="p-2.5 rounded hud-card border hud-border font-mono text-xs space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={item.food_name}
+                            onChange={(e) => handleUpdatePreviewItem(i, "food_name", e.target.value)}
+                            placeholder="Nama Makanan"
+                            className="flex-1 px-2 py-1 rounded hud-card-inner border hud-border font-bold hud-text text-xs focus:outline-none focus:border-primary"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePreviewItem(i)}
+                            className="p-1 rounded text-red-400 hover:bg-red-500/20"
+                            title="Hapus Item Ini"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <span className="font-bold hud-hero-text">{item.calories_kcal} kcal</span>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-outline text-[10px] uppercase">Berat:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              value={item.estimated_weight_g}
+                              onChange={(e) => handleUpdatePreviewItem(i, "estimated_weight_g", e.target.value)}
+                              className="w-16 px-1.5 py-0.5 rounded hud-card-inner border hud-border text-center font-bold hud-text focus:outline-none focus:border-primary"
+                            />
+                            <span className="text-[10px] text-outline">gram</span>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="text-outline text-[10px] uppercase">Kalori:</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={item.calories_kcal}
+                              onChange={(e) => handleUpdatePreviewItem(i, "calories_kcal", e.target.value)}
+                              className="w-16 px-1.5 py-0.5 rounded hud-card-inner border hud-border text-center font-bold hud-hero-text focus:outline-none focus:border-primary"
+                            />
+                            <span className="text-[10px] hud-hero-text">kcal</span>
+                          </div>
+                        </div>
+
+                        <div className="text-[10px] text-outline flex items-center gap-3 pt-1 border-t hud-border">
+                          <span>P: <strong className="hud-beam-text">{item.macros?.protein_g || 0}g</strong></span>
+                          <span>C: <strong className="hud-sub-text">{item.macros?.carbs_g || 0}g</strong></span>
+                          <span>F: <strong className="hud-hero-text">{item.macros?.fat_g || 0}g</strong></span>
+                        </div>
                       </div>
                     ))}
                   </div>
 
+                  {/* Add extra item button */}
+                  <button
+                    type="button"
+                    onClick={handleAddPreviewItem}
+                    className="w-full py-1.5 rounded hud-card border hud-border text-outline hover:hud-text font-mono text-[11px] flex items-center justify-center gap-1 transition-all"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>TAMBAH ITEM MAKANAN LAIN</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleSaveAnalyzedFood}
-                    className="w-full hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 text-black dark:text-black shadow-lg"
+                    disabled={loading || editablePreviewItems.length === 0}
+                    className="w-full hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 text-black dark:text-black shadow-lg disabled:opacity-50 cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
                     <span>SIMPAN KE CATATAN TANGGAL {selectedDate}</span>

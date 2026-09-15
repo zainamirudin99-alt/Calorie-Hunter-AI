@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: "Login berhasil",
       session: {
@@ -48,6 +48,16 @@ export async function POST(req: Request) {
         },
       },
     });
+
+    response.cookies.set("chai_auth_token", data.session.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      sameSite: "lax",
+    });
+
+    return response;
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Internal server error" },
