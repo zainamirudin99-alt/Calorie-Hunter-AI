@@ -32,6 +32,9 @@ import {
   ScanLine
 } from "lucide-react";
 
+import { ProgramType } from "@/types/database";
+import { getProgramNutrientRules } from "@/lib/tdee/calculator";
+
 interface LoggedFoodItem {
   id: string;
   food_name: string;
@@ -119,7 +122,8 @@ export default function TrackingMakananPage() {
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   // Program & Targets (TDEE from chosen program)
-  const [activeProgramName, setActiveProgramName] = useState<string>("Cutting Protocol (-20%)");
+  const [activeProgramType, setActiveProgramType] = useState<ProgramType>("loss_fat_build_muscle");
+  const [activeProgramName, setActiveProgramName] = useState<string>("Loss Fat & Build Muscle (-18%)");
   const [dailyTargetKcal, setDailyTargetKcal] = useState<number>(1950);
   const [targetProteinG, setTargetProteinG] = useState<number>(150);
   const [targetCarbsG, setTargetCarbsG] = useState<number>(195);
@@ -141,8 +145,40 @@ export default function TrackingMakananPage() {
     if (!target || isNaN(target)) return;
 
     setDailyTargetKcal(target);
-    const pType = (prog.program_type || "cutting").toLowerCase();
-    if (pType === "bulking") {
+    const pType = (prog.program_type || "loss_fat_build_muscle").toLowerCase() as ProgramType;
+    setActiveProgramType(pType);
+
+    if (pType === "weight_loss") {
+      setActiveProgramName("Weight Loss (-25% • Bebas Makro/Mikro)");
+      setTargetProteinG(Math.round((target * 0.25) / 4));
+      setTargetCarbsG(Math.round((target * 0.50) / 4));
+      setTargetFatG(Math.round((target * 0.25) / 9));
+    } else if (pType === "loss_fat") {
+      setActiveProgramName("Loss Fat (-20% • Fleksibel Protein)");
+      setTargetProteinG(Math.round((target * 0.25) / 4));
+      setTargetCarbsG(Math.round((target * 0.50) / 4));
+      setTargetFatG(Math.round((target * 0.25) / 9));
+    } else if (pType === "loss_fat_build_muscle") {
+      setActiveProgramName("Loss Fat & Build Muscle (-18% • Wajib Protein Tinggi)");
+      setTargetProteinG(Math.round((target * 0.38) / 4));
+      setTargetCarbsG(Math.round((target * 0.37) / 4));
+      setTargetFatG(Math.round((target * 0.25) / 9));
+    } else if (pType === "gain_mass") {
+      setActiveProgramName("Gain Mass (+18% • Bebas Makro/Mikro)");
+      setTargetProteinG(Math.round((target * 0.20) / 4));
+      setTargetCarbsG(Math.round((target * 0.55) / 4));
+      setTargetFatG(Math.round((target * 0.25) / 9));
+    } else if (pType === "gain_mass_build_muscle") {
+      setActiveProgramName("Gain Mass & Build Muscle (+12% • Wajib Protein Tinggi)");
+      setTargetProteinG(Math.round((target * 0.32) / 4));
+      setTargetCarbsG(Math.round((target * 0.48) / 4));
+      setTargetFatG(Math.round((target * 0.20) / 9));
+    } else if (pType === "lean_mass") {
+      setActiveProgramName("Lean Mass (+6% • Kontrol Ketat Makro & Mikro)");
+      setTargetProteinG(Math.round((target * 0.35) / 4));
+      setTargetCarbsG(Math.round((target * 0.45) / 4));
+      setTargetFatG(Math.round((target * 0.20) / 9));
+    } else if (pType === "bulking") {
       setActiveProgramName("Bulking Power Surge (+15%)");
       setTargetProteinG(Math.round((target * 0.25) / 4));
       setTargetCarbsG(Math.round((target * 0.55) / 4));
@@ -598,95 +634,140 @@ export default function TrackingMakananPage() {
         {/* ========================================================================= */}
         {/* DAILY CALORIE BUDGET & MACRO/MICRO TELEMETRY BAR                          */}
         {/* ========================================================================= */}
-        <div className="hud-card border rounded p-5 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b hud-border pb-3 font-mono">
-            <div className="flex items-center gap-2.5">
-              <Flame className="w-6 h-6 hud-hero-text animate-pulse" />
-              <div>
-                <span className="text-xs font-bold hud-text uppercase block">
-                  BATAS KALORI HARIAN: {dailyTargetKcal} KCAL
-                </span>
-                <span className="text-[11px] text-outline block">
-                  Target ({dailyTargetKcal} kcal) - Kalori Masuk ({dayConsumedKcal} kcal) = Sisa ({remainingKcal} kcal)
-                </span>
+        {(() => {
+          const progRules = getProgramNutrientRules(activeProgramType);
+          return (
+            <div className="hud-card border rounded p-5 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b hud-border pb-3 font-mono">
+                <div className="flex items-center gap-2.5">
+                  <Flame className="w-6 h-6 hud-hero-text animate-pulse" />
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold hud-text uppercase">
+                        BATAS KALORI: {dailyTargetKcal} KCAL
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded border hud-border hud-card-inner hud-hero-text font-bold">
+                        {activeProgramName}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded border hud-border text-slate-300">
+                        {progRules.badge}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-outline block mt-1">
+                      {progRules.ruleDescription}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-left sm:text-right shrink-0">
+                  <span className="text-base font-bold font-display hud-hero-text">
+                    {remainingKcal} KCAL TERSISA
+                  </span>
+                  <span className="text-[10px] text-outline block">
+                    {dayConsumedKcal} / {dailyTargetKcal} kcal ({pctConsumed}% terpakai)
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <div className="text-left sm:text-right">
-              <span className="text-base font-bold font-display hud-hero-text">
-                {remainingKcal} KCAL TERSISA
-              </span>
-              <span className="text-[10px] text-outline block">
-                {dayConsumedKcal} / {dailyTargetKcal} kcal ({pctConsumed}% terpakai)
-              </span>
-            </div>
-          </div>
-
-          {/* Calorie Progress Bar */}
-          <div className="w-full h-3.5 rounded-full hud-card-inner border hud-border overflow-hidden p-0.5">
-            <div 
-              className={`h-full rounded-full transition-all duration-500 ${
-                dayConsumedKcal > dailyTargetKcal ? "bg-red-500" : "hud-hero-bg"
-              }`}
-              style={{ width: `${Math.min(100, pctConsumed)}%` }}
-            />
-          </div>
-
-          {/* Macro Breakdown Progress Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 font-mono text-xs">
-            {/* Protein */}
-            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-outline uppercase font-bold">Protein</span>
-                <span className="font-bold hud-beam-text">{dayConsumedProtein}g / {targetProteinG}g</span>
-              </div>
-              <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              {/* Calorie Progress Bar */}
+              <div className="w-full h-3.5 rounded-full hud-card-inner border hud-border overflow-hidden p-0.5">
                 <div 
-                  className="h-full bg-cyan-400 rounded-full" 
-                  style={{ width: `${Math.min(100, Math.round((dayConsumedProtein / (targetProteinG || 1)) * 100))}%` }}
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    dayConsumedKcal > dailyTargetKcal ? "bg-red-500" : "hud-hero-bg"
+                  }`}
+                  style={{ width: `${Math.min(100, pctConsumed)}%` }}
                 />
               </div>
-            </div>
 
-            {/* Karbohidrat */}
-            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-outline uppercase font-bold">Karbohidrat</span>
-                <span className="font-bold hud-sub-text">{dayConsumedCarbs}g / {targetCarbsG}g</span>
-              </div>
-              <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                <div 
-                  className="h-full bg-emerald-400 rounded-full" 
-                  style={{ width: `${Math.min(100, Math.round((dayConsumedCarbs / (targetCarbsG || 1)) * 100))}%` }}
-                />
-              </div>
-            </div>
+              {/* Macro Breakdown Progress Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 font-mono text-xs">
+                {/* Protein */}
+                <div className={`p-3 rounded hud-card-inner border space-y-1 ${
+                  progRules.tracksProteinStrictly ? "border-cyan-500/60 shadow-sm shadow-cyan-500/20" : "hud-border"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-outline uppercase font-bold">Protein</span>
+                      {progRules.tracksProteinStrictly && (
+                        <span className="text-[8px] px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+                          WAJIB TINGGI
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold hud-beam-text">{dayConsumedProtein}g / {targetProteinG}g</span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div 
+                      className="h-full bg-cyan-400 rounded-full" 
+                      style={{ width: `${Math.min(100, Math.round((dayConsumedProtein / (targetProteinG || 1)) * 100))}%` }}
+                    />
+                  </div>
+                </div>
 
-            {/* Lemak */}
-            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-outline uppercase font-bold">Lemak Sehat</span>
-                <span className="font-bold hud-hero-text">{dayConsumedFat}g / {targetFatG}g</span>
-              </div>
-              <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                <div 
-                  className="h-full bg-amber-400 rounded-full" 
-                  style={{ width: `${Math.min(100, Math.round((dayConsumedFat / (targetFatG || 1)) * 100))}%` }}
-                />
-              </div>
-            </div>
+                {/* Karbohidrat */}
+                <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-outline uppercase font-bold">Karbohidrat</span>
+                      {!progRules.tracksMacros && (
+                        <span className="text-[8px] px-1 py-0.2 rounded bg-slate-700/50 text-slate-400 font-mono">
+                          Opsional
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold hud-sub-text">{dayConsumedCarbs}g / {targetCarbsG}g</span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div 
+                      className="h-full bg-emerald-400 rounded-full" 
+                      style={{ width: `${Math.min(100, Math.round((dayConsumedCarbs / (targetCarbsG || 1)) * 100))}%` }}
+                    />
+                  </div>
+                </div>
 
-            {/* Mikronutrisi Summary */}
-            <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
-              <span className="text-[10px] text-outline uppercase font-bold block">Mikronutrisi</span>
-              <div className="text-[10px] space-y-0.5 text-slate-300">
-                <div>Natrium: <strong>{dayConsumedSodium}mg</strong> / 2300mg</div>
-                <div>Kalium: <strong>{dayConsumedPotassium}mg</strong> / 3400mg</div>
-                <div>Vit C: <strong>{dayConsumedVitC}mg</strong> / 90mg</div>
+                {/* Lemak */}
+                <div className="p-3 rounded hud-card-inner border hud-border space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-outline uppercase font-bold">Lemak Sehat</span>
+                      {!progRules.tracksMacros && (
+                        <span className="text-[8px] px-1 py-0.2 rounded bg-slate-700/50 text-slate-400 font-mono">
+                          Opsional
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold hud-hero-text">{dayConsumedFat}g / {targetFatG}g</span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div 
+                      className="h-full bg-amber-400 rounded-full" 
+                      style={{ width: `${Math.min(100, Math.round((dayConsumedFat / (targetFatG || 1)) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Mikronutrisi Summary */}
+                <div className={`p-3 rounded hud-card-inner border space-y-1 ${
+                  progRules.tracksMicros ? "border-emerald-500/60 shadow-sm shadow-emerald-500/20" : "hud-border"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-outline uppercase font-bold block">Mikronutrisi</span>
+                    <span className={`text-[8px] px-1 py-0.2 rounded font-mono font-bold ${
+                      progRules.tracksMicros ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-800 text-slate-400"
+                    }`}>
+                      {progRules.tracksMicros ? "MONITORING KETAT" : "BEBAS MIKRO"}
+                    </span>
+                  </div>
+                  <div className="text-[10px] space-y-0.5 text-slate-300">
+                    <div>Natrium: <strong>{dayConsumedSodium}mg</strong> / 2300mg</div>
+                    <div>Kalium: <strong>{dayConsumedPotassium}mg</strong> / 3400mg</div>
+                    <div>Vit C: <strong>{dayConsumedVitC}mg</strong> / 90mg</div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Feedback Alert */}
         {actionFeedback && (

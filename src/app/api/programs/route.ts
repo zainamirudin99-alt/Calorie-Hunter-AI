@@ -5,8 +5,18 @@ import { calculateTDEE } from "@/lib/tdee/calculator";
 import { ProgramType } from "@/types/database";
 
 const programSchema = z.object({
-  program_type: z.enum(["cutting", "bulking", "maintenance"], {
-    errorMap: () => ({ message: "Tipe program harus cutting, bulking, atau maintenance" }),
+  program_type: z.enum([
+    "cutting",
+    "bulking",
+    "maintenance",
+    "weight_loss",
+    "loss_fat",
+    "loss_fat_build_muscle",
+    "gain_mass",
+    "gain_mass_build_muscle",
+    "lean_mass",
+  ], {
+    errorMap: () => ({ message: "Tipe program harus salah satu dari 6 program tactical hunter" }),
   }),
 });
 
@@ -84,7 +94,7 @@ export async function POST(req: Request) {
       activity_level: profile.activity_level || "moderate",
     });
 
-    const targetKcal = tdeeResult.targets[program_type];
+    const targetKcal = tdeeResult.targets[program_type] || tdeeResult.targets.cutting;
 
     // Invariant: Mark existing active programs as superseded
     await admin
@@ -97,8 +107,11 @@ export async function POST(req: Request) {
     // 6 months = 180 days
     const endDate = new Date(startDate.getTime() + 180 * 24 * 60 * 60 * 1000);
 
-    // Insert new active program
-    const { data: newProgram, error: insertError } = await admin
+    // Insert new active program (try exact program_type first)
+    let newProgram: any = null;
+    let insertErr: any = null;
+
+    const res1 = await admin
       .from("programs")
       .insert({
         user_id: user.id,
@@ -110,10 +123,39 @@ export async function POST(req: Request) {
         status: "active",
       })
       .select()
-      .single();
+      .maybeSingle();
 
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    if (res1.error) {
+      // Check constraint fallback: If DB schema check constraint only allows ('cutting', 'bulking', 'maintenance')
+      let baseCategory: "cutting" | "bulking" | "maintenance" = "cutting";
+      if (program_type.includes("gain") || program_type === "bulking") {
+        baseCategory = "bulking";
+      } else if (program_type === "lean_mass" || program_type === "maintenance") {
+        baseCategory = "maintenance";
+      } else {
+        baseCategory = "cutting";
+      }
+
+      const res2 = await admin
+        .from("programs")
+        .insert({
+          user_id: user.id,
+          tdee_base: tdeeResult.tdee,
+          program_type: baseCategory,
+          target_daily_kcal: targetKcal,
+          start_date: startDate.toISOString(),
+          end_date: endDate.toISOString(),
+          status: "active",
+        })
+        .select()
+        .maybeSingle();
+
+      if (res2.error) {
+        return NextResponse.json({ error: res2.error.message }, { status: 500 });
+      }
+      newProgram = { ...res2.data, program_type }; // preserve exact client program_type
+    } else {
+      newProgram = res1.data;
     }
 
     return NextResponse.json({

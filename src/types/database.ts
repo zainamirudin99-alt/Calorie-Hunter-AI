@@ -14,7 +14,35 @@ export type ActivityLevel =
 
 export type ActivityIntensity = "low" | "moderate" | "high";
 
-export type ProgramType = "cutting" | "bulking" | "maintenance";
+export type ProgramType = 
+  | "cutting" 
+  | "bulking" 
+  | "maintenance"
+  | "weight_loss"
+  | "loss_fat"
+  | "loss_fat_build_muscle"
+  | "gain_mass"
+  | "gain_mass_build_muscle"
+  | "lean_mass";
+
+export interface ProgramNutrientRules {
+  tracksMacros: boolean;
+  tracksMicros: boolean;
+  tracksProteinStrictly: boolean;
+  proteinTargetDesc: string;
+  ruleTitle: string;
+  ruleDescription: string;
+  badge: string;
+}
+
+export interface CompanionProfile {
+  character_name: string;
+  avatar_url: string;
+  character_type?: string;
+  theme?: "godzilla" | "ultraman";
+  level?: number;
+  updated_at?: string;
+}
 
 export type ProgramStatus = "active" | "expired" | "superseded";
 

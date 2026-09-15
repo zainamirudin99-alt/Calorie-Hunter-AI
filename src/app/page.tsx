@@ -27,9 +27,14 @@ import {
   Dumbbell,
   CheckCircle2,
   Clock,
-  Sparkles,
-  RefreshCw,
-  ArrowRight
+  Sparkles, 
+  RefreshCw, 
+  ArrowRight,
+  Edit3,
+  Upload,
+  Wand2,
+  X,
+  UtensilsCrossed
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -37,6 +42,36 @@ export default function DashboardPage() {
   const { isUltraman } = useTacticalTheme();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [telemetry, setTelemetry] = useState<any | null>(null);
+  const [todayFoodList, setTodayFoodList] = useState<any[]>([]);
+
+  // Companion character customization state
+  const defaultCompanionName = isUltraman ? "ULTRA-GUARDIAN" : "VOLT-FANG";
+  const defaultCompanionAvatar = "https://lh3.googleusercontent.com/aida-public/AB6AXuAVO6miNoH-FgRBDaHTjNKtiRwfWLhiRklLi_OhT69Y7kJb1fyWTwgI_BrOe41ffmqCbspeXEaiRB00FttDC5urU0NEqHhNZV2Dx8ajWDz8CzofWlC1YeBesV8kmo3pmHN0Im473PLW5iWp-JcvfqbTqVxjgxhN7dor9LSL1eoTJaUo18SGAs6wCIUsN6_YEOEpYgUqGiE8B0DYLV6sZg3cncPAfffv6D2O52TcM8Q7eKICzXKMoWqo";
+
+  const [companionName, setCompanionName] = useState<string>(defaultCompanionName);
+  const [companionAvatar, setCompanionAvatar] = useState<string>(defaultCompanionAvatar);
+  const [isCompanionModalOpen, setIsCompanionModalOpen] = useState(false);
+  const [companionEditMode, setCompanionEditMode] = useState<"upload" | "ai">("upload");
+  const [customNameInput, setCustomNameInput] = useState("");
+  const [characterDescInput, setCharacterDescInput] = useState("");
+  const [previewUploadUrl, setPreviewUploadUrl] = useState<string | null>(null);
+  const [aiGeneratedUrl, setAiGeneratedUrl] = useState<string | null>(null);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [companionStatusMsg, setCompanionStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Load customized companion from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("chai_companion_data");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.character_name) setCompanionName(parsed.character_name);
+        if (parsed.avatar_url) setCompanionAvatar(parsed.avatar_url);
+      } catch {}
+    } else {
+      setCompanionName(defaultCompanionName);
+    }
+  }, [isUltraman, defaultCompanionName]);
 
   // Verify session and onboarding completeness
   useEffect(() => {
@@ -79,6 +114,21 @@ export default function DashboardPage() {
         if (summaryRes.ok) {
           const summaryData = await summaryRes.json();
           setTelemetry(summaryData);
+          if (Array.isArray(summaryData.today_food_items) && summaryData.today_food_items.length > 0) {
+            setTodayFoodList(summaryData.today_food_items);
+          } else {
+            // Check localStorage
+            const todayStr = new Date().toISOString().split("T")[0];
+            const localLogs = localStorage.getItem("chai_food_logs_by_date");
+            if (localLogs) {
+              try {
+                const parsed = JSON.parse(localLogs);
+                if (Array.isArray(parsed[todayStr])) {
+                  setTodayFoodList(parsed[todayStr]);
+                }
+              } catch {}
+            }
+          }
         }
       } catch {
         setIsCheckingAuth(false);
@@ -88,29 +138,120 @@ export default function DashboardPage() {
     verifyStatus();
   }, [router]);
 
-  const dailyHistory = telemetry?.daily_history || [
-    { day: "SEN", calories: 1890, target: 1950 },
-    { day: "SEL", calories: 1940, target: 1950 },
-    { day: "RAB", calories: 1780, target: 1950 },
-    { day: "KAM", calories: 1960, target: 1950 },
-    { day: "JUM", calories: 1820, target: 1950 },
-    { day: "SAB", calories: 2050, target: 1950 },
-    { day: "HARI INI", calories: 1420, target: 1950 },
-  ];
+  const handleSaveUploadedCompanion = () => {
+    if (!previewUploadUrl) {
+      setCompanionStatusMsg({ type: "error", text: "Pilih file gambar terlebih dahulu." });
+      return;
+    }
+    const finalName = customNameInput.trim() || companionName;
+    const data = {
+      character_name: finalName,
+      avatar_url: previewUploadUrl,
+    };
+    setCompanionName(finalName);
+    setCompanionAvatar(previewUploadUrl);
+    localStorage.setItem("chai_companion_data", JSON.stringify(data));
+    setCompanionStatusMsg({ type: "success", text: "Companion berhasil diperbarui!" });
+    setTimeout(() => {
+      setIsCompanionModalOpen(false);
+      setCompanionStatusMsg(null);
+    }, 900);
+  };
 
-  const weightTrend = telemetry?.weight_trend || [
-    { week: "MG 1", weight: 82.0 },
-    { week: "MG 2", weight: 81.2 },
-    { week: "MG 3", weight: 80.5 },
-    { week: "MG 4", weight: 79.8 },
-    { week: "MG 5", weight: 79.1 },
-    { week: "MG 6", weight: 78.4 },
-  ];
+  const handleGenerateAiCompanion = async () => {
+    if (!customNameInput.trim()) {
+      setCompanionStatusMsg({ type: "error", text: "Tuliskan nama karakter terlebih dahulu." });
+      return;
+    }
+    if (!characterDescInput.trim()) {
+      setCompanionStatusMsg({ type: "error", text: "Tuliskan deskripsi/tipe karakter terlebih dahulu." });
+      return;
+    }
+
+    setIsGeneratingAi(true);
+    setCompanionStatusMsg(null);
+
+    try {
+      const res = await fetch("/api/companion/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          character_name: customNameInput.trim(),
+          character_description: characterDescInput.trim(),
+          theme: isUltraman ? "ultraman" : "godzilla",
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Gagal menghasilkan visual AI");
+      }
+
+      setAiGeneratedUrl(data.image_url);
+      setCompanionStatusMsg({ type: "success", text: "Visual AI berhasil dibuat! Tekan 'Terapkan' untuk menyimpan." });
+    } catch (err: any) {
+      setCompanionStatusMsg({ type: "error", text: err.message || "Gagal generate gambar AI." });
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  const handleApplyAiCompanion = () => {
+    if (!aiGeneratedUrl) return;
+    const finalName = customNameInput.trim() || companionName;
+    const data = {
+      character_name: finalName,
+      avatar_url: aiGeneratedUrl,
+      character_description: characterDescInput.trim(),
+    };
+    setCompanionName(finalName);
+    setCompanionAvatar(aiGeneratedUrl);
+    localStorage.setItem("chai_companion_data", JSON.stringify(data));
+    setCompanionStatusMsg({ type: "success", text: "Companion AI berhasil diterapkan ke HUD!" });
+    setTimeout(() => {
+      setIsCompanionModalOpen(false);
+      setCompanionStatusMsg(null);
+    }, 900);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setPreviewUploadUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const targetKcal = telemetry?.daily_target_kcal || 1950;
-  const consumedKcal = telemetry?.today_consumed_kcal || 1420;
+  const consumedKcal = telemetry?.today_consumed_kcal ?? 0;
   const remainingKcal = Math.max(0, targetKcal - consumedKcal);
   const isExpired = telemetry?.program_status?.isExpired || false;
+
+  const dailyHistory = telemetry?.daily_history || [
+    { day: "SEN", calories: 0, target: targetKcal },
+    { day: "SEL", calories: 0, target: targetKcal },
+    { day: "RAB", calories: 0, target: targetKcal },
+    { day: "KAM", calories: 0, target: targetKcal },
+    { day: "JUM", calories: 0, target: targetKcal },
+    { day: "SAB", calories: 0, target: targetKcal },
+    { day: "HARI INI", calories: consumedKcal, target: targetKcal },
+  ];
+
+  const weightTrend = telemetry?.weight_trend || [];
+  const weeklyMacros = telemetry?.weekly_macros || {
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: 0,
+    protein_pct: 0,
+    carbs_pct: 0,
+    fat_pct: 0,
+  };
+
+  const feedPct = targetKcal > 0 ? Math.min(100, Math.round((consumedKcal / targetKcal) * 100)) : 0;
+  const energyPct = consumedKcal > 0 ? Math.min(100, Math.round(35 + (feedPct * 0.65))) : 15;
 
   if (isCheckingAuth) {
     return (
@@ -189,22 +330,34 @@ export default function DashboardPage() {
                   <Swords className="w-5 h-5 hud-beam-text" />
                 )}
                 <span className="font-display text-base hud-text tracking-wide font-bold">
-                  {isUltraman ? "ULTRA-GUARDIAN" : "VOLT-FANG"}
+                  {companionName}
                 </span>
                 <span className="text-xs px-2 py-0.5 rounded border hud-border hud-hero-text hud-card-inner font-mono font-bold">
                   LVL 24
                 </span>
               </div>
-              <span className="font-mono text-xs hud-beam-text tracking-wider">
-                {isUltraman ? "MECHA COMBAT UNIT" : "BIO-MECH FAMILIAR"}
-              </span>
+              <button
+                onClick={() => {
+                  setCustomNameInput(companionName);
+                  setCharacterDescInput("");
+                  setPreviewUploadUrl(null);
+                  setAiGeneratedUrl(null);
+                  setCompanionStatusMsg(null);
+                  setIsCompanionModalOpen(true);
+                }}
+                className="text-xs px-2.5 py-1 rounded border hud-border hud-card-high hover:border-primary flex items-center gap-1.5 transition-all text-white font-mono"
+                title="Kustomisasi Karakter Familiar"
+              >
+                <Edit3 className="w-3.5 h-3.5 hud-hero-text" />
+                <span>KUSTOMISASI</span>
+              </button>
             </div>
 
             {/* Visual Companion Frame */}
             <div className="relative h-56 rounded hud-card-inner border hud-border overflow-hidden flex items-center justify-center crt-scanlines">
               <Image
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVO6miNoH-FgRBDaHTjNKtiRwfWLhiRklLi_OhT69Y7kJb1fyWTwgI_BrOe41ffmqCbspeXEaiRB00FttDC5urU0NEqHhNZV2Dx8ajWDz8CzofWlC1YeBesV8kmo3pmHN0Im473PLW5iWp-JcvfqbTqVxjgxhN7dor9LSL1eoTJaUo18SGAs6wCIUsN6_YEOEpYgUqGiE8B0DYLV6sZg3cncPAfffv6D2O52TcM8Q7eKICzXKMoWqo"
-                alt="Tactical Familiar Creature"
+                src={companionAvatar}
+                alt={companionName}
                 fill
                 className="object-cover opacity-85 glow-companion transition-all duration-500"
                 unoptimized
@@ -239,10 +392,12 @@ export default function DashboardPage() {
                     <Bolt className="w-3.5 h-3.5 hud-hero-text" />
                     ENERGI FAMILIAR
                   </span>
-                  <span className="hud-hero-text font-bold">73% (TERPUASKAN)</span>
+                  <span className="hud-hero-text font-bold">
+                    {consumedKcal > 0 ? `${energyPct}% (AKTIF)` : "STANDBY (RESTING)"}
+                  </span>
                 </div>
                 <div className="w-full h-2 hud-card-high rounded overflow-hidden flex gap-0.5">
-                  <div className="hud-hero-bg h-full w-[73%] transition-all"></div>
+                  <div className="hud-hero-bg h-full transition-all duration-500" style={{ width: `${energyPct}%` }}></div>
                   <div className="hud-card-inner h-full flex-1"></div>
                 </div>
               </div>
@@ -253,10 +408,10 @@ export default function DashboardPage() {
                     <Utensils className="w-3.5 h-3.5 hud-beam-text" />
                     BUFFER KEKENYANGAN MAKAN
                   </span>
-                  <span className="hud-beam-text font-bold">1,420 / {targetKcal} FEED UNITS</span>
+                  <span className="hud-beam-text font-bold">{consumedKcal.toLocaleString()} / {targetKcal.toLocaleString()} FEED UNITS</span>
                 </div>
                 <div className="w-full h-2 hud-card-high rounded overflow-hidden flex gap-0.5">
-                  <div className="h-full w-[72.8%] transition-all" style={{ backgroundColor: "var(--beam-accent)" }}></div>
+                  <div className="h-full transition-all duration-500" style={{ width: `${feedPct}%`, backgroundColor: "var(--beam-accent)" }}></div>
                   <div className="hud-card-inner h-full flex-1"></div>
                 </div>
               </div>
@@ -462,28 +617,32 @@ export default function DashboardPage() {
             <div className="grid grid-cols-3 gap-2 sm:gap-3 my-2">
               <div className="hud-card-inner p-2.5 rounded border hud-border text-center">
                 <span className="font-mono text-[10px] hud-beam-text block mb-0.5 font-bold">PROTEIN</span>
-                <span className="font-display text-base font-bold hud-text">1,015g</span>
-                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">38% total</span>
+                <span className="font-display text-base font-bold hud-text">{weeklyMacros.protein_g}g</span>
+                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">{weeklyMacros.protein_pct}% total</span>
               </div>
               <div className="hud-card-inner p-2.5 rounded border hud-border text-center">
                 <span className="font-mono text-[10px] hud-sub-text block mb-0.5 font-bold">KARBO</span>
-                <span className="font-display text-base font-bold hud-text">1,120g</span>
-                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">42% total</span>
+                <span className="font-display text-base font-bold hud-text">{weeklyMacros.carbs_g}g</span>
+                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">{weeklyMacros.carbs_pct}% total</span>
               </div>
               <div className="hud-card-inner p-2.5 rounded border hud-border text-center">
                 <span className="font-mono text-[10px] hud-hero-text block mb-0.5 font-bold">LEMAK</span>
-                <span className="font-display text-base font-bold hud-text">294g</span>
-                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">20% total</span>
+                <span className="font-display text-base font-bold hud-text">{weeklyMacros.fat_g}g</span>
+                <span className="font-mono text-[9px] hud-text-muted block mt-0.5">{weeklyMacros.fat_pct}% total</span>
               </div>
             </div>
 
             {/* Recharts Pie Chart Visualizer */}
-            <MacroDistributionChart proteinPct={38} carbsPct={42} fatPct={20} />
+            <MacroDistributionChart 
+              proteinPct={weeklyMacros.protein_pct || 33} 
+              carbsPct={weeklyMacros.carbs_pct || 34} 
+              fatPct={weeklyMacros.fat_pct || 33} 
+            />
 
             <div className="flex justify-between items-center font-mono text-xs hud-text-muted mt-2 pt-2 border-t hud-border">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--beam-accent)" }}></span> 38% P</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--sub-accent)" }}></span> 42% K</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full hud-hero-bg"></span> 20% L</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--beam-accent)" }}></span> {weeklyMacros.protein_pct}% P</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--sub-accent)" }}></span> {weeklyMacros.carbs_pct}% K</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full hud-hero-bg"></span> {weeklyMacros.fat_pct}% L</span>
             </div>
           </div>
 
@@ -501,75 +660,92 @@ export default function DashboardPage() {
                 <Utensils className="w-5 h-5 hud-hero-text" />
                 <h2 className="font-display text-base hud-text font-bold">LOG RANSUM TEMPUR</h2>
               </div>
-              <span className="font-mono text-xs hud-beam-text font-bold">3 TERCATAT</span>
+              <span className="font-mono text-xs hud-beam-text font-bold">
+                {todayFoodList.length} TERCATAT
+              </span>
             </div>
 
-            <div className="space-y-3">
-              <div className="hud-card-inner border hud-border rounded p-3 flex items-center justify-between hover:border-primary transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text font-mono text-xs">
-                    08:30
+            {todayFoodList.length > 0 ? (
+              <div className="space-y-3">
+                {todayFoodList.map((item, idx) => (
+                  <div key={item.id || idx} className="hud-card-inner border hud-border rounded p-3 flex items-center justify-between hover:border-primary transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text font-mono text-xs">
+                        {item.time_logged || "LOG"}
+                      </div>
+                      <div>
+                        <span className="font-mono text-[11px] hud-text-muted block uppercase">{item.meal_slot || "Ransum"}</span>
+                        <span className="font-display text-sm hud-text font-semibold">{item.food_name}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono text-xs hud-hero-text font-bold block">{item.calories_kcal} kcal</span>
+                      <span className="font-mono text-[11px] hud-beam-text">
+                        {item.macros?.protein_g || 0}g P • {item.macros?.carbs_g || 0}g K • {item.macros?.fat_g || 0}g L
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-mono text-[11px] hud-text-muted block uppercase">Pertarungan Sarapan</span>
-                    <span className="font-display text-sm hud-text font-semibold">Proto-Oat Beast</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="font-mono text-xs hud-hero-text font-bold block">420 kcal</span>
-                  <span className="font-mono text-[11px] hud-beam-text">28g P • 52g K</span>
-                </div>
-              </div>
+                ))}
 
-              <div className="hud-card-inner border hud-border rounded p-3 flex items-center justify-between hover:border-primary transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text font-mono text-xs">
-                    13:15
+                {/* Sisa Alokasi Slot Berikutnya */}
+                <div className="hud-card-inner border border-dashed rounded p-3 flex items-center justify-between" style={{ borderColor: "var(--hero-accent)" }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded hud-card border border-dashed flex items-center justify-center hud-hero-text font-mono text-xs animate-pulse" style={{ borderColor: "var(--hero-accent)" }}>
+                      [+]
+                    </div>
+                    <div>
+                      <span className="font-mono text-[11px] hud-hero-text block uppercase font-bold">SLOT RANSUM BERIKUTNYA</span>
+                      <span className="font-display text-sm hud-text font-medium italic">Alokasi Kalori Tersedia</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-mono text-[11px] hud-text-muted block uppercase">Serbuan Siang</span>
-                    <span className="font-display text-sm hud-text font-semibold">Cyber-Chicken Skewer</span>
+                  <div className="text-right">
+                    <span className="font-mono text-xs hud-beam-text font-bold block">{remainingKcal} kcal</span>
+                    <span className="font-mono text-[11px] hud-text-muted">Batas Sisa</span>
                   </div>
-                </div>
-                <div className="text-right">
-                  <span className="font-mono text-xs hud-hero-text font-bold block">680 kcal</span>
-                  <span className="font-mono text-[11px] hud-beam-text">54g P • 45g K</span>
                 </div>
               </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="hud-card-inner border hud-border border-dashed rounded-lg p-6 flex flex-col items-center text-center gap-2.5">
+                  <div className="w-11 h-11 rounded-full hud-card-high border hud-border flex items-center justify-center text-slate-500">
+                    <UtensilsCrossed className="w-5 h-5 hud-hero-text" />
+                  </div>
+                  <div>
+                    <span className="font-display text-sm hud-text font-bold block">
+                      BELUM ADA RANSUM TERCATAT HARI INI
+                    </span>
+                    <span className="font-mono text-xs text-outline block mt-1">
+                      0 kcal terkonsumsi • Mulai telemetri makanan Anda untuk mengisi buffer energi familiar
+                    </span>
+                  </div>
+                  <Link
+                    href="/scanner"
+                    className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded hud-card-high border hud-border hover:border-primary text-xs font-mono hud-hero-text transition-all shadow"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>MULAI SCAN / TRACKING MAKANAN</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
 
-              <div className="hud-card-inner border hud-border rounded p-3 flex items-center justify-between hover:border-primary transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text font-mono text-xs">
-                    16:40
+                {/* Alokasi Penuh Hari Ini */}
+                <div className="hud-card-inner border border-dashed rounded p-3 flex items-center justify-between" style={{ borderColor: "var(--hero-accent)" }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded hud-card border border-dashed flex items-center justify-center hud-hero-text font-mono text-xs">
+                      [100%]
+                    </div>
+                    <div>
+                      <span className="font-mono text-[11px] hud-hero-text block uppercase font-bold">TOTAL KUOTA KALORI HARIAN</span>
+                      <span className="font-display text-sm hud-text font-medium">Cadangan Ransum Penuh</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-mono text-[11px] hud-text-muted block uppercase">Katalis Buff Energi</span>
-                    <span className="font-display text-sm hud-text font-semibold">Whey Elixir of Power</span>
+                  <div className="text-right">
+                    <span className="font-mono text-sm hud-beam-text font-bold block">{targetKcal} kcal</span>
+                    <span className="font-mono text-[10px] hud-text-muted">Target Harian</span>
                   </div>
-                </div>
-                <div className="text-right">
-                  <span className="font-mono text-xs hud-hero-text font-bold block">180 kcal</span>
-                  <span className="font-mono text-[11px] hud-beam-text">30g P • 4g K</span>
                 </div>
               </div>
-
-              {/* Pending Dinner Slot */}
-              <div className="hud-card-inner border border-dashed rounded p-3 flex items-center justify-between" style={{ borderColor: "var(--hero-accent)" }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded hud-card border border-dashed flex items-center justify-center hud-hero-text font-mono text-xs animate-pulse" style={{ borderColor: "var(--hero-accent)" }}>
-                    [?]
-                  </div>
-                  <div>
-                    <span className="font-mono text-[11px] hud-hero-text block uppercase font-bold">SLOT QUEST MAKAN MALAM</span>
-                    <span className="font-display text-sm hud-text font-medium italic">Menunggu Catatan Asupan...</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="font-mono text-xs hud-beam-text font-bold block">{remainingKcal} kcal</span>
-                  <span className="font-mono text-[11px] hud-text-muted">Batas Sisa</span>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* ACTIVE QUESTS */}
@@ -663,6 +839,211 @@ export default function DashboardPage() {
 
       {/* HUD Footer */}
       <TacticalFooter />
+
+      {/* COMPANION CHARACTER CUSTOMIZATION MODAL */}
+      {isCompanionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="hud-card border rounded-lg p-5 sm:p-6 max-w-lg w-full shadow-2xl relative border-primary/50">
+            <button
+              onClick={() => {
+                setIsCompanionModalOpen(false);
+                setCompanionStatusMsg(null);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded hud-card-high border hud-border"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-4 border-b hud-border pb-3">
+              <Sparkles className="w-5 h-5 hud-hero-text" />
+              <div>
+                <h3 className="font-display text-base font-bold hud-text">KUSTOMISASI FAMILIAR COMPANION</h3>
+                <p className="font-mono text-[10px] text-outline">
+                  Kustomisasi visual monster bio-mech / ultra guardian pendamping Anda
+                </p>
+              </div>
+            </div>
+
+            {/* Mode Switcher */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setCompanionEditMode("upload");
+                  setCompanionStatusMsg(null);
+                }}
+                className={`py-2 px-3 rounded font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
+                  companionEditMode === "upload"
+                    ? "hud-hero-bg text-black border-primary"
+                    : "hud-card-high hud-text-muted border-slate-700 hover:border-slate-500"
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>UPLOAD GAMBAR</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCompanionEditMode("ai");
+                  setCompanionStatusMsg(null);
+                }}
+                className={`py-2 px-3 rounded font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
+                  companionEditMode === "ai"
+                    ? "hud-hero-bg text-black border-primary"
+                    : "hud-card-high hud-text-muted border-slate-700 hover:border-slate-500"
+                }`}
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>GENERATE DENGAN AI</span>
+              </button>
+            </div>
+
+            {/* Character Name Input */}
+            <div className="mb-4">
+              <label className="block font-mono text-xs hud-text-muted mb-1 uppercase font-bold">
+                Nama Karakter Familiar
+              </label>
+              <input
+                type="text"
+                value={customNameInput}
+                onChange={(e) => setCustomNameInput(e.target.value)}
+                placeholder="misal: VOLT-FANG, CYBER-REX, ULTRA-MECHA"
+                className="w-full hud-card-inner border hud-border rounded p-2.5 font-mono text-xs text-white focus:outline-none focus:border-primary"
+                maxLength={40}
+              />
+            </div>
+
+            {/* TAB 1: UPLOAD GAMBAR */}
+            {companionEditMode === "upload" && (
+              <div className="space-y-4">
+                <div className="border-2 border-dashed hud-border rounded-lg p-4 text-center hud-card-inner">
+                  {previewUploadUrl ? (
+                    <div className="relative w-40 h-40 mx-auto rounded overflow-hidden border hud-border mb-3">
+                      <Image
+                        src={previewUploadUrl}
+                        alt="Preview Upload"
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                  ) : (
+                    <div className="py-6">
+                      <Upload className="w-8 h-8 mx-auto hud-hero-text mb-2 opacity-80" />
+                      <p className="font-mono text-xs text-slate-300">Pilih file gambar (JPG, PNG, WebP)</p>
+                      <p className="font-mono text-[10px] text-outline mt-1">Maksimal 5MB</p>
+                    </div>
+                  )}
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="block w-full text-xs font-mono text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:hud-hero-bg file:text-black hover:file:opacity-90 cursor-pointer"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveUploadedCompanion}
+                  className="w-full hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>SIMPAN & TERAPKAN GAMBAR</span>
+                </button>
+              </div>
+            )}
+
+            {/* TAB 2: GENERATE AI */}
+            {companionEditMode === "ai" && (
+              <div className="space-y-4">
+                <div className="hud-card-inner border hud-border rounded p-3">
+                  <div className="flex items-center justify-between text-[11px] font-mono mb-1.5">
+                    <span className="text-slate-400">TEMA SISTEM AKTIF:</span>
+                    <span className="hud-hero-text font-bold">
+                      {isUltraman ? "ULTRAMAN LIGHT MECHA" : "GODZILLA DARK KAIJU"}
+                    </span>
+                  </div>
+                  <label className="block font-mono text-xs hud-text-muted mb-1 uppercase font-bold">
+                    Deskripsi / Tipe Karakter
+                  </label>
+                  <textarea
+                    value={characterDescInput}
+                    onChange={(e) => setCharacterDescInput(e.target.value)}
+                    placeholder="misal: Serigala cyborg bermata laser biru bertaring plasma dengan armor titanium hitam..."
+                    rows={3}
+                    className="w-full hud-card border hud-border rounded p-2 font-mono text-xs text-white focus:outline-none focus:border-primary resize-none"
+                  />
+                  <p className="font-mono text-[10px] text-outline mt-1">
+                    AI Gemini & generator akan mensintesis seni digital resolusi tinggi sesuai deskripsi dan tema aktif.
+                  </p>
+                </div>
+
+                {aiGeneratedUrl && (
+                  <div className="text-center">
+                    <div className="relative w-44 h-44 mx-auto rounded-lg overflow-hidden border-2 border-primary shadow-lg mb-2">
+                      <Image
+                        src={aiGeneratedUrl}
+                        alt="Hasil AI"
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                    <span className="font-mono text-[11px] hud-beam-text block">Preview Visual AI Berhasil</span>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGenerateAiCompanion}
+                    disabled={isGeneratingAi}
+                    className="flex-1 hud-card-high border hud-border hover:border-primary py-2.5 px-3 font-mono text-xs font-bold uppercase hud-hero-text transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isGeneratingAi ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>MENSINTESIS VISUAL AI...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-4 h-4" />
+                        <span>{aiGeneratedUrl ? "GENERATE ULANG" : "GENERATE AI KARAKTER"}</span>
+                      </>
+                    )}
+                  </button>
+
+                  {aiGeneratedUrl && (
+                    <button
+                      type="button"
+                      onClick={handleApplyAiCompanion}
+                      className="hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>TERAPKAN</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Feedback Message */}
+            {companionStatusMsg && (
+              <div
+                className={`mt-3 p-2.5 rounded font-mono text-xs flex items-center gap-2 ${
+                  companionStatusMsg.type === "success"
+                    ? "bg-emerald-950/70 border border-emerald-500/50 text-emerald-300"
+                    : "bg-rose-950/70 border border-rose-500/50 text-rose-300"
+                }`}
+              >
+                <span>{companionStatusMsg.text}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

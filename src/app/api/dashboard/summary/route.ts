@@ -1,49 +1,53 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 
 export async function GET(req: Request) {
   try {
     const supabase = createServerClient(req);
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Default telemetry values (matching the tactical HUD design theme)
+    // Default telemetry values (clean initial baseline)
     let dailyTargetKcal = 1950;
     let tdeeKcal = 2450;
-    let weightTrend = [
-      { week: "MG 1", weight: 82.0 },
-      { week: "MG 2", weight: 81.2 },
-      { week: "MG 3", weight: 80.5 },
-      { week: "MG 4", weight: 79.8 },
-      { week: "MG 5", weight: 79.1 },
-      { week: "MG 6", weight: 78.4 },
-    ];
-    let dailyHistory = [
-      { day: "SEN", calories: 1890, target: 1950 },
-      { day: "SEL", calories: 1940, target: 1950 },
-      { day: "RAB", calories: 1780, target: 1950 },
-      { day: "KAM", calories: 1960, target: 1950 },
-      { day: "JUM", calories: 1820, target: 1950 },
-      { day: "SAB", calories: 2050, target: 1950 },
-      { day: "HARI INI", calories: 1420, target: 1950 },
-    ];
+    let weightTrend: { week: string; weight: number }[] = [];
+    let todayConsumedKcal = 0;
+    let todayFoodItems: any[] = [];
     let weeklyMacros = {
-      protein_g: 1015,
-      carbs_g: 1120,
-      fat_g: 294,
-      protein_pct: 38,
-      carbs_pct: 42,
-      fat_pct: 20,
+      protein_g: 0,
+      carbs_g: 0,
+      fat_g: 0,
+      protein_pct: 0,
+      carbs_pct: 0,
+      fat_pct: 0,
     };
     let programStatus = {
       isExpired: false,
-      daysRemaining: 138,
+      daysRemaining: 180,
       totalDays: 180,
       type: "cutting",
     };
 
+    const daysOfWeek = ["MIN", "SEN", "SEL", "RAB", "KAM", "JUM", "SAB"];
+    const now = new Date();
+    
+    // Construct 7-day history skeleton
+    const dailyHistory = Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date();
+      d.setDate(now.getDate() - (6 - i));
+      const dayLabel = i === 6 ? "HARI INI" : daysOfWeek[d.getDay()];
+      return {
+        day: dayLabel,
+        dateStr: d.toISOString().split("T")[0],
+        calories: 0,
+        target: dailyTargetKcal,
+      };
+    });
+
     if (user) {
-      // Fetch active program
-      const { data: program } = await supabase
+      const admin = createAdminClient();
+
+      // 1. Fetch active program
+      const { data: program } = await admin
         .from("programs")
         .select("*")
         .eq("user_id", user.id)
@@ -55,29 +59,134 @@ export async function GET(req: Request) {
         tdeeKcal = Number(program.tdee_base);
 
         const endDate = new Date(program.end_date).getTime();
-        const now = Date.now();
-        const diffDays = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.ceil((endDate - Date.now()) / (1000 * 60 * 60 * 24));
         programStatus = {
           isExpired: diffDays <= 0,
           daysRemaining: Math.max(0, diffDays),
           totalDays: 180,
           type: program.program_type,
         };
+
+        // Update target in history
+        dailyHistory.forEach((item) => {
+          item.target = dailyTargetKcal;
+        });
       }
 
-      // Fetch weight logs
-      const { data: logs } = await supabase
+      // 2. Fetch weight logs
+      const { data: logs } = await admin
         .from("weight_logs")
         .select("weight_kg, logged_at")
         .eq("user_id", user.id)
         .order("logged_at", { ascending: true })
         .limit(10);
 
-      if (logs && logs.length > 1) {
+      if (logs && logs.length > 0) {
         weightTrend = logs.map((log, i) => ({
           week: `LOG ${i + 1}`,
           weight: Number(log.weight_kg),
         }));
+      }
+
+      // 3. Fetch past 7 days food logs to populate dailyHistory and todayFoodItems
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
+      const { data: foodLogs } = await admin
+        .from("food_logs")
+        .select("id, created_at, total_kcal, ai_response_json, food_log_items(*)")
+        .eq("user_id", user.id)
+        .gte("created_at", sevenDaysAgo.toISOString())
+        .order("created_at", { ascending: true });
+
+      const todayStr = now.toISOString().split("T")[0];
+      let totalProteinG = 0;
+      let totalCarbsG = 0;
+      let totalFatG = 0;
+
+      if (foodLogs && Array.isArray(foodLogs)) {
+        for (const log of foodLogs) {
+          const logDateStr = log.created_at ? log.created_at.split("T")[0] : "";
+          const logKcal = Number(log.total_kcal) || 0;
+
+          // Add to dailyHistory if matching date
+          const histItem = dailyHistory.find((h) => h.dateStr === logDateStr);
+          if (histItem) {
+            histItem.calories += logKcal;
+          }
+
+          // Process today's items
+          const isToday = logDateStr === todayStr;
+          if (isToday) {
+            todayConsumedKcal += logKcal;
+
+            const timeStr = log.created_at
+              ? new Date(log.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+              : "12:00 WIB";
+
+            if (Array.isArray(log.food_log_items) && log.food_log_items.length > 0) {
+              for (const item of log.food_log_items) {
+                const itemProtein = Number(item.protein_g) || 0;
+                const itemCarbs = Number(item.carbs_g) || 0;
+                const itemFat = Number(item.fat_g) || 0;
+                totalProteinG += itemProtein;
+                totalCarbsG += itemCarbs;
+                totalFatG += itemFat;
+
+                todayFoodItems.push({
+                  id: item.id || `item-${Math.random()}`,
+                  food_name: item.food_name,
+                  estimated_weight_g: Number(item.weight_g) || 100,
+                  calories_kcal: Number(item.calories_kcal) || 0,
+                  time_logged: timeStr,
+                  meal_slot: "Ransum Tempur",
+                  macros: {
+                    carbs_g: itemCarbs,
+                    protein_g: itemProtein,
+                    fat_g: itemFat,
+                  },
+                });
+              }
+            } else if (log.ai_response_json?.items && Array.isArray(log.ai_response_json.items)) {
+              for (const item of log.ai_response_json.items) {
+                const itemProtein = Number(item.macros?.protein_g) || 0;
+                const itemCarbs = Number(item.macros?.carbs_g) || 0;
+                const itemFat = Number(item.macros?.fat_g) || 0;
+                totalProteinG += itemProtein;
+                totalCarbsG += itemCarbs;
+                totalFatG += itemFat;
+
+                todayFoodItems.push({
+                  id: item.id || `item-${Math.random()}`,
+                  food_name: item.food_name,
+                  estimated_weight_g: Number(item.estimated_weight_g) || 100,
+                  calories_kcal: Number(item.calories_kcal) || 0,
+                  time_logged: timeStr,
+                  meal_slot: "Ransum Tempur",
+                  macros: {
+                    carbs_g: itemCarbs,
+                    protein_g: itemProtein,
+                    fat_g: itemFat,
+                  },
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Calculate weekly macro percentages if consumed
+      const totalMacroWeight = totalProteinG + totalCarbsG + totalFatG;
+      if (totalMacroWeight > 0) {
+        weeklyMacros = {
+          protein_g: Math.round(totalProteinG),
+          carbs_g: Math.round(totalCarbsG),
+          fat_g: Math.round(totalFatG),
+          protein_pct: Math.round((totalProteinG / totalMacroWeight) * 100),
+          carbs_pct: Math.round((totalCarbsG / totalMacroWeight) * 100),
+          fat_pct: Math.round((totalFatG / totalMacroWeight) * 100),
+        };
       }
     }
 
@@ -89,8 +198,9 @@ export async function GET(req: Request) {
       weight_trend: weightTrend,
       weekly_macros: weeklyMacros,
       program_status: programStatus,
-      today_consumed_kcal: 1420,
-      today_remaining_kcal: Math.max(0, dailyTargetKcal - 1420),
+      today_consumed_kcal: todayConsumedKcal,
+      today_remaining_kcal: Math.max(0, dailyTargetKcal - todayConsumedKcal),
+      today_food_items: todayFoodItems,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
