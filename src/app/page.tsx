@@ -74,19 +74,21 @@ export default function DashboardPage() {
     }
   }, [isUltraman, defaultCompanionName]);
 
-  // Verify session and onboarding completeness
+  // Verify session, onboarding completeness, and telemetry in a single round-trip
   useEffect(() => {
     const verifyStatus = async () => {
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = {
+          "Cache-Control": "no-cache",
+        };
         if (token) {
           headers["Authorization"] = `Bearer ${token}`;
         }
 
-        const res = await fetch("/api/auth/status", { headers });
+        // Single round-trip post-login aggregation endpoint
+        const res = await fetch("/api/dashboard/summary", { headers });
         if (res.status === 401) {
-          // Invalid or expired session -> redirect to /auth
           window.location.href = "/auth";
           return;
         }
@@ -96,19 +98,20 @@ export default function DashboardPage() {
         }
 
         const data = await res.json();
-        // Valid session, but profile is incomplete -> redirect to /profile
+        if (!data.authenticated) {
+          window.location.href = "/auth";
+          return;
+        }
+        // Incomplete profile -> redirect to /profile
         if (!data.has_profile) {
           window.location.href = "/profile";
           return;
         }
-        // Valid session and profile complete, but no active program -> redirect to /program
+        // Incomplete or no active program -> redirect to /program
         if (!data.has_program) {
           window.location.href = "/program";
           return;
         }
-
-        // All onboarding steps completed -> render Dashboard
-        setIsCheckingAuth(false);
 
         // Synchronize cloud companion so Desktop and Mobile are 100% in sync
         if (data.companion && (data.companion.avatar_url || data.companion.character_name)) {
@@ -117,38 +120,37 @@ export default function DashboardPage() {
           localStorage.setItem("chai_companion_data", JSON.stringify(data.companion));
         }
 
-        // Fetch dashboard telemetry
-        const summaryRes = await fetch("/api/dashboard/summary", { headers });
-        if (summaryRes.ok) {
-          const summaryData = await summaryRes.json();
-          setTelemetry(summaryData);
-          if (Array.isArray(summaryData.today_food_items) && summaryData.today_food_items.length > 0) {
-            setTodayFoodList(summaryData.today_food_items);
-            // Mirror server food items to local device storage for offline and fast render
-            const d = new Date();
-            const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        setTelemetry(data);
+
+        if (Array.isArray(data.today_food_items) && data.today_food_items.length > 0) {
+          setTodayFoodList(data.today_food_items);
+          // Mirror server food items to local device storage for offline and fast render
+          const d = new Date();
+          const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          try {
+            const currentLocal = JSON.parse(localStorage.getItem("chai_food_logs_by_date") || "{}");
+            currentLocal[localTodayStr] = data.today_food_items;
+            localStorage.setItem("chai_food_logs_by_date", JSON.stringify(currentLocal));
+          } catch {}
+        } else {
+          // Check localStorage with local date (matching scanner format YYYY-MM-DD)
+          const d = new Date();
+          const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          const utcTodayStr = d.toISOString().split("T")[0];
+          const localLogs = localStorage.getItem("chai_food_logs_by_date");
+          if (localLogs) {
             try {
-              const currentLocal = JSON.parse(localStorage.getItem("chai_food_logs_by_date") || "{}");
-              currentLocal[localTodayStr] = summaryData.today_food_items;
-              localStorage.setItem("chai_food_logs_by_date", JSON.stringify(currentLocal));
+              const parsed = JSON.parse(localLogs);
+              const itemsForToday = parsed[localTodayStr] || parsed[utcTodayStr];
+              if (Array.isArray(itemsForToday)) {
+                setTodayFoodList(itemsForToday);
+              }
             } catch {}
-          } else {
-            // Check localStorage with local date (matching scanner format YYYY-MM-DD)
-            const d = new Date();
-            const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-            const utcTodayStr = d.toISOString().split("T")[0];
-            const localLogs = localStorage.getItem("chai_food_logs_by_date");
-            if (localLogs) {
-              try {
-                const parsed = JSON.parse(localLogs);
-                const itemsForToday = parsed[localTodayStr] || parsed[utcTodayStr];
-                if (Array.isArray(itemsForToday)) {
-                  setTodayFoodList(itemsForToday);
-                }
-              } catch {}
-            }
           }
         }
+
+        // All onboarding steps completed and telemetry populated
+        setIsCheckingAuth(false);
       } catch {
         setIsCheckingAuth(false);
       }

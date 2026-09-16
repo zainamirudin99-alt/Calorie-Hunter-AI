@@ -48,34 +48,72 @@ export async function GET(req: Request) {
       };
     });
 
-    if (user) {
-      const admin = createAdminClient();
+    if (!user) {
+      return NextResponse.json(
+        { authenticated: false, message: "Belum login atau sesi telah kedaluwarsa" },
+        { status: 401 }
+      );
+    }
 
-      // 1. Fetch active program
-      const { data: program } = await admin
-        .from("programs")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("status", "active")
+    const admin = createAdminClient();
+
+    // 0. Fetch user profile
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("full_name, username, avatar_url, companion_data, weight_kg, height_cm, age, gender, activity_level")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    // 1. Fetch active program
+    const { data: program } = await admin
+      .from("programs")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    let todayMealPlanSummary: any = null;
+
+    if (program) {
+      dailyTargetKcal = Number(program.target_daily_kcal);
+      tdeeKcal = Number(program.tdee_base);
+
+      const reassessment = calculateReassessmentStatus(program.start_date, program.end_date);
+      programStatus = {
+        isExpired: reassessment.isExpired,
+        daysRemaining: reassessment.daysRemaining,
+        totalDays: reassessment.totalDays,
+        type: program.program_type,
+      };
+
+      // Update target in history
+      dailyHistory.forEach((item) => {
+        item.target = dailyTargetKcal;
+      });
+
+      // Fetch today's meal plan summary in the same round-trip
+      const { data: mealPlanRow } = await admin
+        .from("meal_plans")
+        .select("plan_json")
+        .eq("program_id", program.id)
+        .order("generated_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      if (program) {
-        dailyTargetKcal = Number(program.target_daily_kcal);
-        tdeeKcal = Number(program.tdee_base);
-
-        const reassessment = calculateReassessmentStatus(program.start_date, program.end_date);
-        programStatus = {
-          isExpired: reassessment.isExpired,
-          daysRemaining: reassessment.daysRemaining,
-          totalDays: reassessment.totalDays,
-          type: program.program_type,
-        };
-
-        // Update target in history
-        dailyHistory.forEach((item) => {
-          item.target = dailyTargetKcal;
-        });
+      if (mealPlanRow?.plan_json?.days && Array.isArray(mealPlanRow.plan_json.days)) {
+        const wibDayIdx = new Date(now.getTime() + 7 * 60 * 60 * 1000).getDay();
+        const targetDayNum = wibDayIdx === 0 ? 7 : wibDayIdx;
+        const matchedDay = mealPlanRow.plan_json.days.find((d: any) => d.day_number === targetDayNum) || mealPlanRow.plan_json.days[0];
+        if (matchedDay) {
+          todayMealPlanSummary = {
+            has_meal_plan: true,
+            day_name: matchedDay.day_name,
+            total_day_kcal: matchedDay.total_day_kcal,
+            meals: matchedDay.meals || [],
+          };
+        }
       }
+    }
 
       // 2. Fetch weight logs
       const { data: logs } = await admin
@@ -208,10 +246,15 @@ export async function GET(req: Request) {
           fat_pct: Math.round((totalFatG / totalMacroWeight) * 100),
         };
       }
-    }
 
     return NextResponse.json({
       success: true,
+      authenticated: true,
+      has_profile: Boolean(profile?.weight_kg && profile?.height_cm && profile?.age && profile?.gender),
+      has_program: Boolean(program),
+      profile: profile || null,
+      program: program || null,
+      companion: profile?.companion_data || (profile?.avatar_url ? { avatar_url: profile.avatar_url, character_name: profile.username } : null),
       daily_target_kcal: dailyTargetKcal,
       tdee_kcal: tdeeKcal,
       daily_history: dailyHistory,
@@ -221,6 +264,7 @@ export async function GET(req: Request) {
       today_consumed_kcal: todayConsumedKcal,
       today_remaining_kcal: calculateRemainingCalories(dailyTargetKcal, todayConsumedKcal),
       today_food_items: todayFoodItems,
+      today_meal_plan_summary: todayMealPlanSummary,
     }, {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
