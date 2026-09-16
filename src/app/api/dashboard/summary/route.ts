@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
+import { calculateRemainingCalories, calculateReassessmentStatus } from "@/lib/tdee/calculator";
 
 export async function GET(req: Request) {
   try {
@@ -58,12 +59,11 @@ export async function GET(req: Request) {
         dailyTargetKcal = Number(program.target_daily_kcal);
         tdeeKcal = Number(program.tdee_base);
 
-        const endDate = new Date(program.end_date).getTime();
-        const diffDays = Math.ceil((endDate - Date.now()) / (1000 * 60 * 60 * 24));
+        const reassessment = calculateReassessmentStatus(program.start_date, program.end_date);
         programStatus = {
-          isExpired: diffDays <= 0,
-          daysRemaining: Math.max(0, diffDays),
-          totalDays: 180,
+          isExpired: reassessment.isExpired,
+          daysRemaining: reassessment.daysRemaining,
+          totalDays: reassessment.totalDays,
           type: program.program_type,
         };
 
@@ -216,7 +216,7 @@ export async function GET(req: Request) {
       weekly_macros: weeklyMacros,
       program_status: programStatus,
       today_consumed_kcal: todayConsumedKcal,
-      today_remaining_kcal: Math.max(0, dailyTargetKcal - todayConsumedKcal),
+      today_remaining_kcal: calculateRemainingCalories(dailyTargetKcal, todayConsumedKcal),
       today_food_items: todayFoodItems,
     });
   } catch (error: any) {

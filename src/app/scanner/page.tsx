@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 
 import { ProgramType } from "@/types/database";
-import { getProgramNutrientRules } from "@/lib/tdee/calculator";
+import { getProgramNutrientRules, calculateMacroTargets, calculateRemainingCalories } from "@/lib/tdee/calculator";
 import { useSelectedAiModel } from "@/lib/gemini/models";
 
 interface LoggedFoodItem {
@@ -166,52 +166,23 @@ export default function TrackingMakananPage() {
     const pType = (prog.program_type || "loss_fat_build_muscle").toLowerCase() as ProgramType;
     setActiveProgramType(pType);
 
-    if (pType === "weight_loss") {
-      setActiveProgramName("Weight Loss (-25% • Bebas Makro/Mikro)");
-      setTargetProteinG(Math.round((target * 0.25) / 4));
-      setTargetCarbsG(Math.round((target * 0.50) / 4));
-      setTargetFatG(Math.round((target * 0.25) / 9));
-    } else if (pType === "loss_fat") {
-      setActiveProgramName("Loss Fat (-20% • Fleksibel Protein)");
-      setTargetProteinG(Math.round((target * 0.25) / 4));
-      setTargetCarbsG(Math.round((target * 0.50) / 4));
-      setTargetFatG(Math.round((target * 0.25) / 9));
-    } else if (pType === "loss_fat_build_muscle") {
-      setActiveProgramName("Loss Fat & Build Muscle (-18% • Wajib Protein Tinggi)");
-      setTargetProteinG(Math.round((target * 0.38) / 4));
-      setTargetCarbsG(Math.round((target * 0.37) / 4));
-      setTargetFatG(Math.round((target * 0.25) / 9));
-    } else if (pType === "gain_mass") {
-      setActiveProgramName("Gain Mass (+18% • Bebas Makro/Mikro)");
-      setTargetProteinG(Math.round((target * 0.20) / 4));
-      setTargetCarbsG(Math.round((target * 0.55) / 4));
-      setTargetFatG(Math.round((target * 0.25) / 9));
-    } else if (pType === "gain_mass_build_muscle") {
-      setActiveProgramName("Gain Mass & Build Muscle (+12% • Wajib Protein Tinggi)");
-      setTargetProteinG(Math.round((target * 0.32) / 4));
-      setTargetCarbsG(Math.round((target * 0.48) / 4));
-      setTargetFatG(Math.round((target * 0.20) / 9));
-    } else if (pType === "lean_mass") {
-      setActiveProgramName("Lean Mass (+6% • Kontrol Ketat Makro & Mikro)");
-      setTargetProteinG(Math.round((target * 0.35) / 4));
-      setTargetCarbsG(Math.round((target * 0.45) / 4));
-      setTargetFatG(Math.round((target * 0.20) / 9));
-    } else if (pType === "bulking") {
-      setActiveProgramName("Bulking Power Surge (+15%)");
-      setTargetProteinG(Math.round((target * 0.25) / 4));
-      setTargetCarbsG(Math.round((target * 0.55) / 4));
-      setTargetFatG(Math.round((target * 0.20) / 9));
-    } else if (pType === "maintenance") {
-      setActiveProgramName("Maintenance Defense (0%)");
-      setTargetProteinG(Math.round((target * 0.30) / 4));
-      setTargetCarbsG(Math.round((target * 0.45) / 4));
-      setTargetFatG(Math.round((target * 0.25) / 9));
-    } else {
-      setActiveProgramName("Cutting Protocol (-20%)");
-      setTargetProteinG(Math.round((target * 0.35) / 4));
-      setTargetCarbsG(Math.round((target * 0.40) / 4));
-      setTargetFatG(Math.round((target * 0.25) / 9));
-    }
+    const macros = calculateMacroTargets(target, pType);
+    setTargetProteinG(macros.protein_g);
+    setTargetCarbsG(macros.carbs_g);
+    setTargetFatG(macros.fat_g);
+
+    const programLabels: Record<ProgramType, string> = {
+      weight_loss: "Weight Loss (-25% • Bebas Makro/Mikro)",
+      loss_fat: "Loss Fat (-20% • Fleksibel Protein)",
+      loss_fat_build_muscle: "Loss Fat & Build Muscle (-18% • Wajib Protein Tinggi)",
+      gain_mass: "Gain Mass (+18% • Bebas Makro/Mikro)",
+      gain_mass_build_muscle: "Gain Mass & Build Muscle (+12% • Wajib Protein Tinggi)",
+      lean_mass: "Lean Mass (+6% • Kontrol Ketat Makro & Mikro)",
+      bulking: "Bulking Power Surge (+15%)",
+      maintenance: "Maintenance Defense (0%)",
+      cutting: "Cutting Protocol (-20%)",
+    };
+    setActiveProgramName(programLabels[pType] || "Protokol Kalori");
   };
 
   // Load active program & stored logs on mount
@@ -369,7 +340,7 @@ export default function TrackingMakananPage() {
   const dayConsumedPotassium = currentDayLogs.reduce((sum, item) => sum + (item.micros?.potassium_mg || 0), 0);
   const dayConsumedVitC = currentDayLogs.reduce((sum, item) => sum + (item.micros?.vitamin_c_mg || 0), 0);
 
-  const remainingKcal = Math.max(0, dailyTargetKcal - dayConsumedKcal);
+  const remainingKcal = calculateRemainingCalories(dailyTargetKcal, dayConsumedKcal);
   const pctConsumed = Math.min(100, Math.round((dayConsumedKcal / (dailyTargetKcal || 1)) * 100));
 
   // Quick Presets if user wants to fast-pick or adapt AI recommendations

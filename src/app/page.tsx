@@ -36,6 +36,7 @@ import {
   X,
   UtensilsCrossed
 } from "lucide-react";
+import { calculateRemainingCalories } from "@/lib/tdee/calculator";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -313,7 +314,7 @@ export default function DashboardPage() {
 
   const targetKcal = telemetry?.daily_target_kcal || 1950;
   const consumedKcal = telemetry?.today_consumed_kcal ?? 0;
-  const remainingKcal = Math.max(0, targetKcal - consumedKcal);
+  const remainingKcal = telemetry?.today_remaining_kcal ?? calculateRemainingCalories(targetKcal, consumedKcal);
   const isExpired = telemetry?.program_status?.isExpired || false;
 
   const dailyHistory = telemetry?.daily_history || [

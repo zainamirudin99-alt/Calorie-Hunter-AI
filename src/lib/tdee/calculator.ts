@@ -174,3 +174,105 @@ export function getProgramNutrientRules(programType: ProgramType): ProgramNutrie
       };
   }
 }
+
+export interface MacroTargets {
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  protein_pct: number;
+  carbs_pct: number;
+  fat_pct: number;
+}
+
+export interface ReassessmentStatus {
+  isExpired: boolean;
+  daysRemaining: number;
+  totalDays: number;
+  progressPct: number;
+}
+
+/**
+ * Single source of truth for remaining calories calculation (guaranteed non-negative).
+ */
+export function calculateRemainingCalories(targetDailyKcal: number, consumedKcal: number): number {
+  return Math.max(0, Math.round(targetDailyKcal) - Math.round(consumedKcal));
+}
+
+/**
+ * Single source of truth for 180-day program reassessment cycle.
+ */
+export function calculateReassessmentStatus(
+  startDate: string | Date,
+  endDate?: string | Date
+): ReassessmentStatus {
+  const start = new Date(startDate).getTime();
+  const end = endDate ? new Date(endDate).getTime() : start + 180 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const totalDays = 180;
+  const diffMs = end - now;
+  const daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  const isExpired = daysRemaining <= 0;
+  const daysElapsed = Math.min(totalDays, Math.max(0, Math.floor((now - start) / (1000 * 60 * 60 * 24))));
+  const progressPct = Math.min(100, Math.round((daysElapsed / totalDays) * 100));
+
+  return {
+    isExpired,
+    daysRemaining,
+    totalDays,
+    progressPct,
+  };
+}
+
+/**
+ * Single source of truth for macro split calculations per program protocol.
+ */
+export function calculateMacroTargets(
+  targetDailyKcal: number,
+  programType: ProgramType
+): MacroTargets {
+  const target = Math.max(0, targetDailyKcal);
+  let pRatio = 0.35;
+  let cRatio = 0.40;
+  let fRatio = 0.25;
+
+  switch (programType) {
+    case "weight_loss":
+      pRatio = 0.25; cRatio = 0.50; fRatio = 0.25;
+      break;
+    case "loss_fat":
+      pRatio = 0.25; cRatio = 0.50; fRatio = 0.25;
+      break;
+    case "loss_fat_build_muscle":
+      pRatio = 0.38; cRatio = 0.37; fRatio = 0.25;
+      break;
+    case "gain_mass":
+      pRatio = 0.20; cRatio = 0.55; fRatio = 0.25;
+      break;
+    case "gain_mass_build_muscle":
+      pRatio = 0.32; cRatio = 0.48; fRatio = 0.20;
+      break;
+    case "lean_mass":
+      pRatio = 0.35; cRatio = 0.45; fRatio = 0.20;
+      break;
+    case "bulking":
+      pRatio = 0.25; cRatio = 0.55; fRatio = 0.20;
+      break;
+    case "maintenance":
+      pRatio = 0.30; cRatio = 0.45; fRatio = 0.25;
+      break;
+    case "cutting":
+    default:
+      pRatio = 0.35; cRatio = 0.40; fRatio = 0.25;
+      break;
+  }
+
+  return {
+    protein_g: Math.round((target * pRatio) / 4),
+    carbs_g: Math.round((target * cRatio) / 4),
+    fat_g: Math.round((target * fRatio) / 9),
+    protein_pct: Math.round(pRatio * 100),
+    carbs_pct: Math.round(cRatio * 100),
+    fat_pct: Math.round(fRatio * 100),
+  };
+}
+

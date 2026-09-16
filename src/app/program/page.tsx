@@ -8,7 +8,7 @@ import { TacticalFooter } from "@/components/hud/footer";
 import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { ProgramType } from "@/types/database";
-import { getProgramNutrientRules } from "@/lib/tdee/calculator";
+import { getProgramNutrientRules, calculateTDEE } from "@/lib/tdee/calculator";
 import { useSelectedAiModel } from "@/lib/gemini/models";
 import { 
   Target, 
@@ -77,19 +77,15 @@ export default function ProgramSelectionPage() {
           if (p && p.weight_kg && p.height_cm && p.age && p.gender) {
             setUserProfile(p);
             setUserWeightKg(Number(p.weight_kg));
-            const base = 10 * Number(p.weight_kg) + 6.25 * Number(p.height_cm) - 5 * Number(p.age);
-            const calculatedBmr = p.gender === "male" ? base + 5 : base - 161;
-            const palMap: Record<string, number> = {
-              sedentary: 1.2,
-              light: 1.375,
-              moderate: 1.55,
-              active: 1.725,
-              very_active: 1.9,
-            };
-            const pal = palMap[p.activity_level] || 1.55;
-            const calculatedTdee = Math.round(calculatedBmr * pal);
-            setUserTdee(calculatedTdee);
-            setUserBmr(Math.round(calculatedBmr));
+            const tdeeResult = calculateTDEE({
+              weight_kg: Number(p.weight_kg),
+              height_cm: Number(p.height_cm),
+              age: Number(p.age),
+              gender: p.gender,
+              activity_level: p.activity_level || "moderate",
+            });
+            setUserTdee(tdeeResult.tdee);
+            setUserBmr(tdeeResult.bmr);
           }
 
           if (statusData.program?.program_type) {
@@ -102,13 +98,22 @@ export default function ProgramSelectionPage() {
     loadProfileData();
   }, []);
 
+  // Centralized deterministic calculation for all 6 specialized programs
+  const activeTdeeResult = calculateTDEE({
+    weight_kg: userWeightKg || 70,
+    height_cm: userProfile?.height_cm ? Number(userProfile.height_cm) : 175,
+    age: userProfile?.age ? Number(userProfile.age) : 25,
+    gender: userProfile?.gender || "male",
+    activity_level: userProfile?.activity_level || "moderate",
+  });
+
   // 6 Specialized Programs requested by the user
   const programs = [
     {
       id: "weight_loss" as ProgramType,
       title: "WEIGHT LOSS",
       category: "Defisit Murni (-25%)",
-      targetKcal: Math.max(userBmr, Math.round(userTdee * 0.75)),
+      targetKcal: activeTdeeResult.targets.weight_loss,
       icon: TrendingDown,
       color: "var(--hero-accent)",
       ruleBadge: "BEBAS MAKRO & MIKRO",
@@ -125,7 +130,7 @@ export default function ProgramSelectionPage() {
       id: "loss_fat" as ProgramType,
       title: "LOSS FAT",
       category: "Defisit Bakar Lemak (-20%)",
-      targetKcal: Math.max(userBmr, Math.round(userTdee * 0.80)),
+      targetKcal: activeTdeeResult.targets.loss_fat,
       icon: Flame,
       color: "var(--hero-accent)",
       ruleBadge: "FLEKSIBEL PROTEIN",
@@ -142,7 +147,7 @@ export default function ProgramSelectionPage() {
       id: "loss_fat_build_muscle" as ProgramType,
       title: "LOSS FAT & BUILD MUSCLE",
       category: "Body Recomposition (-18%)",
-      targetKcal: Math.max(userBmr, Math.round(userTdee * 0.82)),
+      targetKcal: activeTdeeResult.targets.loss_fat_build_muscle,
       icon: Dumbbell,
       color: "var(--beam-accent)",
       ruleBadge: "WAJIB PROTEIN TINGGI",
@@ -160,7 +165,7 @@ export default function ProgramSelectionPage() {
       id: "gain_mass" as ProgramType,
       title: "GAIN MASS",
       category: "Surplus Kalori Masif (+18%)",
-      targetKcal: Math.round(userTdee * 1.18),
+      targetKcal: activeTdeeResult.targets.gain_mass,
       icon: TrendingUp,
       color: "var(--sub-accent)",
       ruleBadge: "BEBAS MAKRO & MIKRO",
@@ -177,7 +182,7 @@ export default function ProgramSelectionPage() {
       id: "gain_mass_build_muscle" as ProgramType,
       title: "GAIN MASS & BUILD MUSCLE",
       category: "Surplus Hipertrofi (+12%)",
-      targetKcal: Math.round(userTdee * 1.12),
+      targetKcal: activeTdeeResult.targets.gain_mass_build_muscle,
       icon: Zap,
       color: "var(--beam-accent)",
       ruleBadge: "WAJIB PROTEIN TINGGI",
@@ -194,7 +199,7 @@ export default function ProgramSelectionPage() {
       id: "lean_mass" as ProgramType,
       title: "LEAN MASS",
       category: "Clean Bulk & Atletik (+6%)",
-      targetKcal: Math.round(userTdee * 1.06),
+      targetKcal: activeTdeeResult.targets.lean_mass,
       icon: Activity,
       color: "var(--sub-accent)",
       ruleBadge: "KONTROL MAKRO & MIKRO KETAT",
