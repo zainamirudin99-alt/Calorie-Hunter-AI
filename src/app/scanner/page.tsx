@@ -397,7 +397,7 @@ export default function TrackingMakananPage() {
 
         const img = new window.Image();
         img.onload = () => {
-          const maxDim = 1200;
+          const maxDim = 1024;
           let w = img.width;
           let h = img.height;
           if (w > maxDim || h > maxDim) {
@@ -429,7 +429,7 @@ export default function TrackingMakananPage() {
                 setIsCompressingPhoto(false);
               },
               "image/jpeg",
-              0.88
+              0.80
             );
           } else {
             setSelectedFile(file);
@@ -1198,6 +1198,21 @@ export default function TrackingMakananPage() {
                   </>
                 )}
               </button>
+
+              {/* Optimistic Non-blocking Processing Indicator */}
+              {loading && (
+                <div className="mt-3 p-3.5 rounded hud-card-inner border border-primary/40 font-mono text-xs text-cyan-300 flex items-center gap-3 animate-pulse bg-cyan-950/20">
+                  <div className="w-5 h-5 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin shrink-0"></div>
+                  <div>
+                    <span className="font-bold block uppercase tracking-wider text-[11px] text-cyan-400">
+                      [SENSOR AI AKTIF: MENGANALISIS...]
+                    </span>
+                    <span className="text-[10px] text-slate-300 block">
+                      Memindai porsi ransum, gramatur, makronutrisi & mikronutrisi...
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {errorMsg && (
                 <div className="mt-3 p-3 rounded bg-red-500/10 border border-red-500/40 text-red-400 font-mono text-xs space-y-2">

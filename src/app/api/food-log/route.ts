@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { createHash } from "crypto";
 import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from "@/lib/gemini/client";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
+
+interface FoodScanCacheEntry {
+  result: any;
+  modelUsed: string;
+  isFallback: boolean;
+  timestamp: number;
+}
+const foodScanCache = new Map<string, FoodScanCacheEntry>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
 
 const nutritionItemSchema = z.object({
   food_name: z.string(),
@@ -392,6 +402,37 @@ export async function POST(req: Request) {
       }
     }
 
+    // Hash-based caching: SHA-256 over image byte stream / manual text + model
+    const hash = createHash("sha256");
+    if (base64Image) {
+      hash.update(base64Image);
+    }
+    if (manualText) {
+      hash.update(manualText);
+    }
+    hash.update(effectiveModel);
+    const cacheKey = hash.digest("hex");
+
+    const cachedEntry = foodScanCache.get(cacheKey);
+    if (cachedEntry && (Date.now() - cachedEntry.timestamp < CACHE_TTL_MS)) {
+      const validated = geminiNutritionResponseSchema.parse(cachedEntry.result);
+      const totalKcal = validated.items.reduce((sum, item) => sum + item.calories_kcal, 0);
+
+      return NextResponse.json({
+        success: true,
+        action: "analyze",
+        preview: validated,
+        data: validated,
+        total_kcal: totalKcal,
+        model_used: cachedEntry.modelUsed,
+        is_fallback: cachedEntry.isFallback,
+        is_cached: true,
+        photo_url: photoUrl,
+        input_type: photoFile ? "photo" : "manual_text",
+        raw_text_input: manualText,
+      });
+    }
+
     const promptText = `
 Identifikasi secara rinci setiap item makanan pada ${photoFile ? "foto makanan yang dilampirkan" : "deskripsi teks"}. 
 ${manualText ? `Keterangan/catatan porsi dari pengguna: "${manualText}".` : ""}
@@ -570,6 +611,20 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
 
     const validated = geminiNutritionResponseSchema.parse(aiResult);
     const totalKcal = validated.items.reduce((sum, item) => sum + item.calories_kcal, 0);
+
+    // Save to short-lived in-memory cache
+    if (validated && Array.isArray(validated.items) && validated.items.length > 0) {
+      foodScanCache.set(cacheKey, {
+        result: validated,
+        modelUsed,
+        isFallback,
+        timestamp: Date.now(),
+      });
+      if (foodScanCache.size > 100) {
+        const oldestKey = foodScanCache.keys().next().value;
+        if (oldestKey) foodScanCache.delete(oldestKey);
+      }
+    }
 
     // If request explicitly requested save immediately (legacy compatibility)
     if (action === "save_immediate" && user) {
