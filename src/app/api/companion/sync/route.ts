@@ -1,49 +1,65 @@
 import { NextResponse } from "next/server";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(req: Request) {
   try {
     const supabase = createServerClient(req);
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      return NextResponse.json({ authenticated: false, companion: null });
+      return NextResponse.json(
+        { authenticated: false, companion: null },
+        { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+      );
     }
 
     const admin = createAdminClient();
-    let companion = user.user_metadata?.companion || null;
+    let companion: any = null;
 
-    // Fetch authoritative user from DB to bypass stale JWT claims on other devices
+    // 1. Prioritize profiles table as primary cloud single source of truth
     try {
-      const { data: dbUser } = await admin.auth.admin.getUserById(user.id);
-      if (dbUser?.user?.user_metadata?.companion) {
-        companion = dbUser.user.user_metadata.companion;
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("avatar_url, companion_data")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile?.companion_data) {
+        companion = profile.companion_data;
+      } else if (profile?.avatar_url) {
+        companion = {
+          character_name: "TITAN PROTO-GODZILLA",
+          avatar_url: profile.avatar_url,
+        };
       }
     } catch {}
 
-    // Check profiles table fallback
+    // 2. Fallback to auth.users user_metadata if profile column empty
     if (!companion) {
       try {
-        const { data: profile } = await admin
-          .from("profiles")
-          .select("avatar_url, companion_data")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (profile?.companion_data) {
-          companion = profile.companion_data;
-        } else if (profile?.avatar_url) {
-          companion = {
-            character_name: "TITAN PROTO-GODZILLA",
-            avatar_url: profile.avatar_url,
-          };
+        const { data: dbUser } = await admin.auth.admin.getUserById(user.id);
+        if (dbUser?.user?.user_metadata?.companion) {
+          companion = dbUser.user.user_metadata.companion;
         }
       } catch {}
     }
 
-    return NextResponse.json({ authenticated: true, companion });
+    if (!companion && user.user_metadata?.companion) {
+      companion = user.user_metadata.companion;
+    }
+
+    return NextResponse.json(
+      { authenticated: true, companion },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   }
 }
 
@@ -125,8 +141,13 @@ export async function POST(req: Request) {
       success: true,
       message: "Companion visual and attributes synced to cloud profile",
       companion: companionData,
+    }, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" }
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   }
 }

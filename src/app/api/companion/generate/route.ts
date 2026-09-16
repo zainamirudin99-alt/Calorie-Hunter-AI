@@ -2,6 +2,19 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { gemini, PRIMARY_GEMINI_MODEL } from "@/lib/gemini/client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+// In-memory cache for synthesized companion visuals (TTL: 10 minutes)
+interface CompanionCacheEntry {
+  image_url: string;
+  prompt_used: string;
+  generated_at: string;
+  timestamp: number;
+}
+const companionAiCache = new Map<string, CompanionCacheEntry>();
+const COMPANION_CACHE_TTL_MS = 10 * 60 * 1000;
+
 const generateCompanionSchema = z.object({
   character_name: z.string().min(1, "Nama karakter wajib diisi").max(50),
   character_description: z.string().min(1, "Deskripsi karakter wajib diisi").max(300),
@@ -204,6 +217,24 @@ export async function POST(req: Request) {
 
     const { character_name, character_description, theme } = parseResult.data;
 
+    // Check in-memory synthesizer cache
+    const cacheKey = `${theme}_${character_name.trim().toLowerCase()}_${character_description.trim().toLowerCase()}`;
+    const cached = companionAiCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < COMPANION_CACHE_TTL_MS)) {
+      return NextResponse.json({
+        success: true,
+        character_name,
+        character_description,
+        theme,
+        image_url: cached.image_url,
+        prompt_used: cached.prompt_used,
+        generated_at: cached.generated_at,
+        cached: true,
+      }, {
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+      });
+    }
+
     // 1. Synthesize optimized prompt
     const tacticalPrompt = await buildOptimalPrompt(
       character_name,
@@ -218,6 +249,14 @@ export async function POST(req: Request) {
       character_name
     );
 
+    const generatedAt = new Date().toISOString();
+    companionAiCache.set(cacheKey, {
+      image_url: imageBase64Url,
+      prompt_used: tacticalPrompt,
+      generated_at: generatedAt,
+      timestamp: Date.now(),
+    });
+
     return NextResponse.json({
       success: true,
       character_name,
@@ -225,12 +264,14 @@ export async function POST(req: Request) {
       theme,
       image_url: imageBase64Url,
       prompt_used: tacticalPrompt,
-      generated_at: new Date().toISOString(),
+      generated_at: generatedAt,
+    }, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
     });
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Gagal mensintesis visual AI." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
     );
   }
 }
