@@ -32,7 +32,7 @@ export default function MealPlanPage() {
   const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
   const [modelUsed, setModelUsed] = useState<string>("gemini-3.8-flash");
 
-  const fetchMealPlan = async () => {
+  const fetchMealPlan = async (force = false) => {
     setLoading(true);
     setFeedback(null);
     setIsFallback(false);
@@ -43,6 +43,7 @@ export default function MealPlanPage() {
         headers: {
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({ force }),
       });
 
       const data = await res.json();
@@ -54,7 +55,7 @@ export default function MealPlanPage() {
 
         localStorage.setItem("chai_cached_meal_plan", JSON.stringify(data.meal_plan));
         if (!data.is_fallback) {
-          setFeedback(`Rencana makan 7 hari berhasil disintesis oleh ${data.model_used || "AI"}!`);
+          setFeedback(data.is_cached ? "Rencana makan aktif disinkronkan dari data cloud!" : `Rencana makan 7 hari berhasil disintesis oleh ${data.model_used || "AI"}!`);
         }
       }
     } catch {
@@ -71,10 +72,10 @@ export default function MealPlanPage() {
       try {
         setMealPlan(JSON.parse(cached));
       } catch {
-        fetchMealPlan();
+        fetchMealPlan(false);
       }
     } else {
-      fetchMealPlan();
+      fetchMealPlan(false);
     }
   }, []);
 
@@ -103,7 +104,7 @@ export default function MealPlanPage() {
           </div>
 
           <button
-            onClick={fetchMealPlan}
+            onClick={() => fetchMealPlan(true)}
             disabled={loading}
             className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
           >
@@ -129,7 +130,7 @@ export default function MealPlanPage() {
 
             <button
               type="button"
-              onClick={fetchMealPlan}
+              onClick={() => fetchMealPlan(true)}
               disabled={loading}
               className="px-4 py-2 rounded hud-card-high border border-amber-400/60 hover:border-amber-400 text-amber-300 font-bold uppercase text-xs flex items-center gap-2 transition-all cursor-pointer shrink-0 disabled:opacity-50"
             >

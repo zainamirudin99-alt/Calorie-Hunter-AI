@@ -92,6 +92,9 @@ const mealPlanGeminiSchema = {
   required: ["summary", "target_daily_kcal", "weekly_split", "days"],
 };
 
+// In-flight mutex to prevent duplicate simultaneous AI invocations for the same user/program
+const mealPlanLocks = new Map<string, Promise<any>>();
+
 export async function POST(req: Request) {
   try {
     const ip = req.headers.get("x-forwarded-for") || "client-local";
@@ -107,6 +110,8 @@ export async function POST(req: Request) {
     try {
       requestBody = await req.json();
     } catch {}
+
+    const forceRegenerate = Boolean(requestBody?.force || requestBody?.regenerate);
 
     const supabase = createServerClient(req);
     const { data: { user } } = await supabase.auth.getUser();
@@ -144,6 +149,40 @@ export async function POST(req: Request) {
       requestBody?.preferred_model ||
       profile.preferred_gemini_model ||
       (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : "gemini-3.8-flash");
+
+    // Fase 3 Idempotency: If not explicitly force-regenerated, return existing plan from DB without calling AI
+    if (!forceRegenerate && user && program.id !== "demo-prog") {
+      const { data: existingPlan } = await supabase
+        .from("meal_plans")
+        .select("plan_json, model_used, generated_at")
+        .eq("program_id", program.id)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingPlan?.plan_json) {
+        return NextResponse.json({
+          success: true,
+          meal_plan: existingPlan.plan_json,
+          model_used: existingPlan.model_used || selectedModel,
+          is_cached: true,
+          is_fallback: false,
+          fallback_message: null,
+          message: "Rencana makan aktif dimuat dari database.",
+        });
+      }
+    }
+
+    // Deduplication Lock: If another parallel request is already generating a meal plan for this program, await it
+    const lockKey = `${user?.id || "anon"}:${program.id}`;
+    if (mealPlanLocks.has(lockKey)) {
+      try {
+        const inFlight = await mealPlanLocks.get(lockKey);
+        if (inFlight) {
+          return NextResponse.json(inFlight);
+        }
+      } catch {}
+    }
 
     const prompt = `
 Anda adalah AI Ahli Gizi & Nutrisi Olahraga untuk sistem CALORIE HUNTER AI.
@@ -332,15 +371,30 @@ Instruksi menu:
 
     const validated = mealPlanResponseSchema.parse(generatedJson);
 
-    // Save newly generated AI plan to Supabase if not a fallback
+    // Save newly generated AI plan to Supabase if not a fallback (Idempotent upsert)
     if (user && program.id !== "demo-prog" && !isFallback) {
       const today = new Date().toISOString().split("T")[0];
-      await supabase.from("meal_plans").insert({
+      const planPayload = {
         program_id: program.id,
         week_start_date: today,
         plan_json: validated,
         model_used: selectedModel,
-      });
+        generated_at: new Date().toISOString(),
+      };
+
+      const { error: upsertErr } = await supabase
+        .from("meal_plans")
+        .upsert(planPayload, { onConflict: "program_id" });
+
+      if (upsertErr) {
+        // Fallback to standard insert if unique constraint not yet migrated in remote DB
+        await supabase.from("meal_plans").insert({
+          program_id: program.id,
+          week_start_date: today,
+          plan_json: validated,
+          model_used: selectedModel,
+        });
+      }
     }
 
     return NextResponse.json({
