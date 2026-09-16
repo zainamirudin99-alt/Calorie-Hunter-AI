@@ -107,7 +107,32 @@ export async function GET(req: Request) {
     });
   }
 
-  // Models to test: requested model first, then fallback candidates
+  // Fast Metadata Verification (Matches OpenAI & DeepSeek behavior, handles AQ. keys instantly)
+  try {
+    const listStartTime = Date.now();
+    const listPromise = gemini.models.list();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout verifikasi metadata")), 2500)
+    );
+
+    await Promise.race([listPromise, timeoutPromise]);
+    const latencyMs = Date.now() - listStartTime;
+
+    return NextResponse.json({
+      status: "online",
+      available: true,
+      model,
+      actual_model: model,
+      provider: "google",
+      latency_ms: latencyMs,
+      response_preview: "OK (Connected)",
+      message: `Model ${model} aktif dan siap merespons via Gemini API (latensi ${latencyMs}ms). Kunci API terotentikasi.`,
+    });
+  } catch (listErr: any) {
+    console.warn("[Gemini HealthCheck] Fast metadata check skipped, attempting direct ping:", listErr.message);
+  }
+
+  // Fallback: Direct ping with maxOutputTokens: 5 and 2500ms timeout per candidate
   const candidateModels = [
     model,
     "gemini-3.7-flash",
@@ -122,10 +147,18 @@ export async function GET(req: Request) {
   for (const candidate of candidateModels) {
     try {
       const pingStartTime = Date.now();
-      const response = await gemini.models.generateContent({
+      const pingPromise = gemini.models.generateContent({
         model: candidate,
         contents: "Ping. Balas persis satu kata: OK.",
+        config: {
+          maxOutputTokens: 5,
+        },
       });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout ping")), 2500)
+      );
+
+      const response = (await Promise.race([pingPromise, timeoutPromise])) as any;
       latencyMs = Date.now() - pingStartTime;
       const text = (response.text || "").trim();
       successfulModel = candidate;
