@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { calculateRemainingCalories, calculateReassessmentStatus } from "@/lib/tdee/calculator";
+import { getStandardWibDate } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
@@ -112,8 +116,7 @@ export async function GET(req: Request) {
       const foodLogs = foodLogsRes.data;
 
       const todayStrUtc = now.toISOString().split("T")[0];
-      const wibDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      const todayStrWib = wibDate.toISOString().split("T")[0];
+      const todayStrWib = getStandardWibDate(now);
 
       let totalProteinG = 0;
       let totalCarbsG = 0;
@@ -218,6 +221,10 @@ export async function GET(req: Request) {
       today_consumed_kcal: todayConsumedKcal,
       today_remaining_kcal: calculateRemainingCalories(dailyTargetKcal, todayConsumedKcal),
       today_food_items: todayFoodItems,
+    }, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

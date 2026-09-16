@@ -4,6 +4,9 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { calculateTDEE } from "@/lib/tdee/calculator";
 import { ProgramType } from "@/types/database";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const programSchema = z.object({
   program_type: z.enum([
     "cutting",

@@ -4,6 +4,9 @@ import { gemini, PRIMARY_GEMINI_MODEL } from "@/lib/gemini/client";
 import { createServerClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const mealSchema = z.object({
   meal_name: z.string(),
   time_slot: z.string(),

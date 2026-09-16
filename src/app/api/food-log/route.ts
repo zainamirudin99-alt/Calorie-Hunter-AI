@@ -4,6 +4,10 @@ import { createHash } from "crypto";
 import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from "@/lib/gemini/client";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getStandardWibDate } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 interface FoodScanCacheEntry {
   result: any;
@@ -137,8 +141,7 @@ export async function GET(req: Request) {
           try {
             const d = new Date(timestamp);
             if (!isNaN(d.getTime())) {
-              const wibTime = new Date(d.getTime() + 7 * 60 * 60 * 1000);
-              wibDatePart = wibTime.toISOString().split("T")[0];
+              wibDatePart = getStandardWibDate(d);
             }
           } catch {}
 

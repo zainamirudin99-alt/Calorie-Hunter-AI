@@ -316,12 +316,18 @@ export default function TrackingMakananPage() {
   useEffect(() => {
     syncDateLogs(true);
 
-    const handleWindowFocus = () => {
-      syncDateLogs(true);
+    const handleSyncOnActive = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        syncDateLogs(true);
+      }
     };
 
-    window.addEventListener("focus", handleWindowFocus);
-    return () => window.removeEventListener("focus", handleWindowFocus);
+    window.addEventListener("focus", handleSyncOnActive);
+    window.addEventListener("visibilitychange", handleSyncOnActive);
+    return () => {
+      window.removeEventListener("focus", handleSyncOnActive);
+      window.removeEventListener("visibilitychange", handleSyncOnActive);
+    };
   }, [selectedDate]);
 
   // Save logs to localStorage helper

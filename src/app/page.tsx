@@ -155,6 +155,20 @@ export default function DashboardPage() {
     };
 
     verifyStatus();
+
+    const handleFocusSync = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        verifyStatus();
+      }
+    };
+
+    window.addEventListener("visibilitychange", handleFocusSync);
+    window.addEventListener("focus", handleFocusSync);
+
+    return () => {
+      window.removeEventListener("visibilitychange", handleFocusSync);
+      window.removeEventListener("focus", handleFocusSync);
+    };
   }, [router, defaultCompanionName]);
 
   // Cloud sync helper so companion updates sync between desktop and mobile
