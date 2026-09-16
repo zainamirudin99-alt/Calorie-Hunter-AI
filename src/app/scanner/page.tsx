@@ -1162,9 +1162,12 @@ export default function TrackingMakananPage() {
                     rows={4}
                     value={manualText}
                     onChange={(e) => handleTextChange(e.target.value)}
-                    placeholder="Contoh: 1 piring nasi putih (200g) + dada ayam bakar kecap (150g) + tahu goreng 2 buah"
+                    placeholder="Contoh: 1 piring nasi putih, ayam bakar dada 120g, tempe goreng 2 biji, sayur lodeh 1 mangkok, es teh tawar"
                     className="w-full p-3 rounded hud-card-inner border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary"
                   />
+                  <p className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
+                    <span>💡 Multi-Menu: Tulis beberapa menu sekaligus dipisahkan koma, baris baru, atau &apos;+&apos;. AI akan otomatis memecah setiap menu secara rinci.</span>
+                  </p>
 
                   {/* Quick Presets for Manual Text */}
                   <div className="space-y-1.5 pt-1">

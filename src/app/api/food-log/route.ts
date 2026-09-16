@@ -18,28 +18,48 @@ interface FoodScanCacheEntry {
 const foodScanCache = new Map<string, FoodScanCacheEntry>();
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
 
+function cleanAiJsonResponse(rawText: string): any {
+  if (!rawText || typeof rawText !== "string") return null;
+  let cleaned = rawText.trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/, "")
+    .replace(/\s*```$/, "");
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
 const nutritionItemSchema = z.object({
-  food_name: z.string(),
-  estimated_weight_g: z.number(),
-  calories_kcal: z.number(),
+  food_name: z.string().default("Item Makanan"),
+  estimated_weight_g: z.coerce.number().default(100),
+  calories_kcal: z.coerce.number().default(150),
   macros: z.object({
-    carbs_g: z.number().default(0),
-    protein_g: z.number().default(0),
-    fat_g: z.number().default(0),
-    fiber_g: z.number().default(0),
-    sugar_g: z.number().default(0),
-  }),
+    carbs_g: z.coerce.number().default(0),
+    protein_g: z.coerce.number().default(0),
+    fat_g: z.coerce.number().default(0),
+    fiber_g: z.coerce.number().default(0),
+    sugar_g: z.coerce.number().default(0),
+  }).default({ carbs_g: 0, protein_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0 }),
   micros: z.object({
-    sodium_mg: z.number().optional().default(0),
-    potassium_mg: z.number().optional().default(0),
-    vitamin_c_mg: z.number().optional().default(0),
-  }).default({}),
-  confidence: z.number().default(0.85),
+    sodium_mg: z.coerce.number().optional().default(0),
+    potassium_mg: z.coerce.number().optional().default(0),
+    vitamin_c_mg: z.coerce.number().optional().default(0),
+  }).optional().default({}),
+  confidence: z.coerce.number().default(0.85),
 });
 
 const geminiNutritionResponseSchema = z.object({
-  items: z.array(nutritionItemSchema),
-  total_calories_kcal: z.number(),
+  items: z.array(nutritionItemSchema).min(1),
+  total_calories_kcal: z.coerce.number().optional().default(0),
   notes: z.string().optional().default(""),
 });
 
@@ -437,10 +457,28 @@ export async function POST(req: Request) {
     }
 
     const promptText = `
-Identifikasi secara rinci setiap item makanan pada ${photoFile ? "foto makanan yang dilampirkan" : "deskripsi teks"}. 
+Identifikasi dan dekonstruksi secara rinci SETIAP item makanan dan minuman pada ${photoFile ? "foto makanan yang dilampirkan" : "deskripsi teks"}.
 ${manualText ? `Keterangan/catatan porsi dari pengguna: "${manualText}".` : ""}
-Estimasikan berat dalam gram sesuai porsi makanan umum Indonesia, lalu hitung kalori (kcal), makronutrisi (karbohidrat, protein, lemak, serat, gula dalam gram), serta mikronutrisi (natrium, kalium, vitamin C dalam mg). 
-Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika foto menampilkan hidangan.
+
+ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
+1. PISAHKAN SETIAP ITEM: Uraikan setiap komponen hidangan menjadi item individual terpisah di dalam array 'items'. JANGAN PERNAH menggabungkan beberapa hidangan berbeda menjadi satu item tunggal (misal: "Nasi Padang Komplit" HARUS dipecah menjadi Nasi Putih, Rendang Sapi, Sayur Daun Singkong, Sambal Ijo, dll).
+2. PARSING MULTI-MENU TEKS: Jika teks pengguna berisi daftar menu (dipisahkan koma, baris baru, tanda tambah (+), nomor, kata 'dan', 'dengan', 'lauknya', atau porsi seperti '2 butir', '1 piring', '3 potong'), kenali dan parsing setiap makanan secara terpisah beserta perkalian porsi dan gramasinya.
+3. ESTIMASI REALISTIS: Estimasikan berat gram sesuai porsi makanan umum Indonesia, lalu hitung kalori (kcal), makronutrisi (karbohidrat, protein, lemak, serat, gula dalam gram), serta mikronutrisi (natrium, kalium, vitamin C dalam mg).
+4. OUTPUT: Kembalikan strictly JSON valid berformat:
+{
+  "items": [
+    {
+      "food_name": "Nama Makanan",
+      "estimated_weight_g": 150,
+      "calories_kcal": 200,
+      "macros": { "carbs_g": 25, "protein_g": 10, "fat_g": 5, "fiber_g": 2, "sugar_g": 1 },
+      "micros": { "sodium_mg": 120, "potassium_mg": 180, "vitamin_c_mg": 5 },
+      "confidence": 0.9
+    }
+  ],
+  "total_calories_kcal": 200,
+  "notes": "Analisis terinci per item"
+}
 `;
 
     let aiResult: any = null;
@@ -473,12 +511,15 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
             model: effectiveModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o",
             messages: [{ role: "user", content: userContent }],
             response_format: { type: "json_object" },
+            temperature: 0.2,
+            max_tokens: 2048,
           }),
         });
 
         if (oaiRes.ok) {
           const oaiData = await oaiRes.json();
-          const parsed = JSON.parse(oaiData.choices?.[0]?.message?.content || "{}");
+          const rawContent = oaiData.choices?.[0]?.message?.content || "";
+          const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
           if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
             aiResult = parsed;
             modelUsed = effectiveModel;
@@ -503,12 +544,15 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
             model: effectiveModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat",
             messages: [{ role: "user", content: dsPrompt }],
             response_format: { type: "json_object" },
+            temperature: 0.2,
+            max_tokens: 2048,
           }),
         });
 
         if (dsRes.ok) {
           const dsData = await dsRes.json();
-          const parsed = JSON.parse(dsData.choices?.[0]?.message?.content || "{}");
+          const rawContent = dsData.choices?.[0]?.message?.content || "";
+          const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
           if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
             aiResult = parsed;
             modelUsed = effectiveModel;
@@ -548,12 +592,14 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
             config: {
               responseMimeType: "application/json",
               responseSchema: foodScanGeminiSchema,
+              temperature: 0.2,
+              maxOutputTokens: 2048,
             },
           });
 
           const text = response.text || "";
           if (text) {
-            aiResult = JSON.parse(text);
+            aiResult = cleanAiJsonResponse(text) || JSON.parse(text);
             if (aiResult && Array.isArray(aiResult.items) && aiResult.items.length > 0) {
               modelUsed = effectiveModel.startsWith("gemini-") ? currentCandidate : effectiveModel;
               break;
@@ -613,7 +659,8 @@ Confidence score 0.5 s/d 1.0 — jangan pernah mengosongkan item makanan jika fo
     }
 
     const validated = geminiNutritionResponseSchema.parse(aiResult);
-    const totalKcal = validated.items.reduce((sum, item) => sum + item.calories_kcal, 0);
+    const totalKcal = validated.items.reduce((sum, item) => sum + (Number(item.calories_kcal) || 0), 0);
+    validated.total_calories_kcal = totalKcal;
 
     // Save to short-lived in-memory cache
     if (validated && Array.isArray(validated.items) && validated.items.length > 0) {
