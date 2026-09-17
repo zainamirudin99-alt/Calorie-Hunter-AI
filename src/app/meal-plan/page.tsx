@@ -77,6 +77,15 @@ export default function MealPlanPage() {
     } else {
       fetchMealPlan(false);
     }
+
+    const handleGlobalSync = () => {
+      fetchMealPlan(false);
+    };
+
+    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    return () => {
+      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    };
   }, []);
 
   const activeDay: MealPlanDay | null = mealPlan?.days[selectedDayIndex] || null;
@@ -103,14 +112,25 @@ export default function MealPlanPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => fetchMealPlan(true)}
-            disabled={loading}
-            className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>{loading ? "MENYINTESIS..." : "REGENERASI AI MENU"}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchMealPlan(false)}
+              disabled={loading}
+              className="py-2 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-xs font-bold uppercase transition-all flex items-center gap-1.5 text-slate-300 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
+              title="Sinkronkan rencana makan tersimpan dari database Cloud"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-primary" : "text-cyan-400"}`} />
+              <span>SINKRONKAN CLOUD</span>
+            </button>
+            <button
+              onClick={() => fetchMealPlan(true)}
+              disabled={loading}
+              className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              <span>{loading ? "MENYINTESIS..." : "REGENERASI AI MENU"}</span>
+            </button>
+          </div>
         </div>
 
         {/* AI Fallback Notice with prominent 'Coba Lagi' button */}

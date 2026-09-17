@@ -42,60 +42,88 @@ export default function ProgramSelectionPage() {
 
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [isProgramSyncing, setIsProgramSyncing] = useState(false);
 
   // AI Analysis State
   const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
   const [aiAnalysisResult, setAiAnalysisResult] = useState<any | null>(null);
 
-  useEffect(() => {
-    const loadProfileData = async () => {
-      // 1. Try local profile first
-      const saved = localStorage.getItem("chai_user_profile");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.tdee) {
-            setUserTdee(Number(parsed.tdee));
-            setUserBmr(parsed.bmr ? Number(parsed.bmr) : Math.round(Number(parsed.tdee) / 1.55));
-          }
-          if (parsed.weight_kg) {
-            setUserWeightKg(Number(parsed.weight_kg));
-          }
-          setUserProfile(parsed);
-        } catch {}
-      }
-
-      // 2. Fetch server status to ensure exact synced biometrics
+  // Sync biometrics and active program from server
+  const syncProgramData = async (silent = true) => {
+    if (!silent) setIsProgramSyncing(true);
+    // 1. Try local profile first
+    const saved = localStorage.getItem("chai_user_profile");
+    if (saved) {
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
-        const res = await fetch("/api/auth/status", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const statusData = await res.json();
-          const p = statusData.profile;
-          if (p && p.weight_kg && p.height_cm && p.age && p.gender) {
-            setUserProfile(p);
-            setUserWeightKg(Number(p.weight_kg));
-            const tdeeResult = calculateTDEE({
-              weight_kg: Number(p.weight_kg),
-              height_cm: Number(p.height_cm),
-              age: Number(p.age),
-              gender: p.gender,
-              activity_level: p.activity_level || "moderate",
-            });
-            setUserTdee(tdeeResult.tdee);
-            setUserBmr(tdeeResult.bmr);
-          }
-
-          if (statusData.program?.program_type) {
-            setSelectedType(statusData.program.program_type);
-          }
+        const parsed = JSON.parse(saved);
+        if (parsed.tdee) {
+          setUserTdee(Number(parsed.tdee));
+          setUserBmr(parsed.bmr ? Number(parsed.bmr) : Math.round(Number(parsed.tdee) / 1.55));
         }
+        if (parsed.weight_kg) {
+          setUserWeightKg(Number(parsed.weight_kg));
+        }
+        setUserProfile(parsed);
       } catch {}
+    }
+
+    // 2. Fetch server status to ensure exact synced biometrics
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+      const res = await fetch("/api/auth/status", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const statusData = await res.json();
+        const p = statusData.profile;
+        if (p && p.weight_kg && p.height_cm && p.age && p.gender) {
+          setUserProfile(p);
+          setUserWeightKg(Number(p.weight_kg));
+          const tdeeResult = calculateTDEE({
+            weight_kg: Number(p.weight_kg),
+            height_cm: Number(p.height_cm),
+            age: Number(p.age),
+            gender: p.gender,
+            activity_level: p.activity_level || "moderate",
+          });
+          setUserTdee(tdeeResult.tdee);
+          setUserBmr(tdeeResult.bmr);
+        }
+
+        if (statusData.program?.program_type) {
+          setSelectedType(statusData.program.program_type);
+        }
+
+        if (!silent) {
+          setFeedback({
+            type: "success",
+            msg: "Data program dan TDEE berhasil disinkronkan dari database Cloud!",
+          });
+        }
+      }
+    } catch {
+      if (!silent) {
+        setFeedback({
+          type: "error",
+          msg: "Gagal menyinkronkan data program dari server.",
+        });
+      }
+    } finally {
+      if (!silent) setIsProgramSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    syncProgramData(true);
+
+    const handleGlobalSync = () => {
+      syncProgramData(false);
     };
 
-    loadProfileData();
+    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    return () => {
+      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    };
   }, []);
 
   // Centralized deterministic calculation for all 6 specialized programs
@@ -341,9 +369,21 @@ export default function ProgramSelectionPage() {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2 font-mono text-xs hud-text-muted shrink-0">
-            <Calendar className="w-4 h-4 hud-beam-text" />
-            <span>KAMPANYE: <strong className="hud-hero-text font-bold">180 HARI (6 BULAN)</strong></span>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => syncProgramData(false)}
+              disabled={isProgramSyncing}
+              className="py-1.5 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 text-slate-300 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
+              title="Segarkan target program dan biometrik dari database Cloud"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isProgramSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+              <span>{isProgramSyncing ? "MENYINKRONKAN..." : "SINKRONKAN CLOUD"}</span>
+            </button>
+            <div className="hidden sm:flex items-center gap-2 font-mono text-xs hud-text-muted">
+              <Calendar className="w-4 h-4 hud-beam-text" />
+              <span>KAMPANYE: <strong className="hud-hero-text font-bold">180 HARI (6 BULAN)</strong></span>
+            </div>
           </div>
         </div>
 

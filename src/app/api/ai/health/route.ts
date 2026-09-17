@@ -9,11 +9,19 @@ export async function GET(req: Request) {
 
   const startTime = Date.now();
 
+  const env_keys_status = {
+    GEMINI_API_KEY: Boolean(process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("placeholder")),
+    OPENAI_API_KEY: Boolean(process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")),
+    DEEPSEEK_API_KEY: Boolean(process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")),
+  };
+
+  const respond = (data: any) => NextResponse.json({ ...data, env_keys_status });
+
   // 1. OpenAI Series (GPT-5.6 Luna, GPT-5 Thinking Mini)
   if (model.startsWith("gpt-")) {
     const openaiKey = process.env.OPENAI_API_KEY;
     if (!openaiKey || openaiKey.includes("placeholder")) {
-      return NextResponse.json({
+      return respond({
         status: "no_key",
         available: false,
         model,
@@ -31,7 +39,7 @@ export async function GET(req: Request) {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error?.message || `HTTP ${res.status}`);
       }
-      return NextResponse.json({
+      return respond({
         status: "online",
         available: true,
         model,
@@ -41,7 +49,7 @@ export async function GET(req: Request) {
       });
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
-      return NextResponse.json({
+      return respond({
         status: "error",
         available: false,
         model,
@@ -56,7 +64,7 @@ export async function GET(req: Request) {
   if (model.startsWith("deepseek-")) {
     const deepseekKey = process.env.DEEPSEEK_API_KEY;
     if (!deepseekKey || deepseekKey.includes("placeholder")) {
-      return NextResponse.json({
+      return respond({
         status: "no_key",
         available: false,
         model,
@@ -74,7 +82,7 @@ export async function GET(req: Request) {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error?.message || `HTTP ${res.status}`);
       }
-      return NextResponse.json({
+      return respond({
         status: "online",
         available: true,
         model,
@@ -84,7 +92,7 @@ export async function GET(req: Request) {
       });
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
-      return NextResponse.json({
+      return respond({
         status: "error",
         available: false,
         model,
@@ -98,7 +106,7 @@ export async function GET(req: Request) {
   // 3. Google Gemini Series (Default)
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey || geminiKey.includes("placeholder")) {
-    return NextResponse.json({
+    return respond({
       status: "no_key",
       available: false,
       model,
@@ -118,7 +126,7 @@ export async function GET(req: Request) {
     await Promise.race([listPromise, timeoutPromise]);
     const latencyMs = Date.now() - listStartTime;
 
-    return NextResponse.json({
+    return respond({
       status: "online",
       available: true,
       model,
@@ -172,7 +180,7 @@ export async function GET(req: Request) {
 
   if (successfulModel) {
     const isFailover = successfulModel !== model;
-    return NextResponse.json({
+    return respond({
       status: "online",
       available: true,
       model,
@@ -197,16 +205,16 @@ export async function GET(req: Request) {
     errorMsg.includes("capacity") ||
     errorMsg.includes("UNAVAILABLE");
 
-  return NextResponse.json({
-    status: isRateLimit ? "rate_limited" : isCapacity ? "capacity_limited" : "error",
-    available: false,
-    model,
-    provider: "google",
-    latency_ms: Date.now() - startTime,
-    message: isCapacity
-      ? `Server Google Gemini sedang mengalami lonjakan beban kapasitas global (503). Sistem Calorie Hunter AI otomatis mengaktifkan modul nutrisi cadangan deterministik yang tetap berfungsi 100%.`
-      : isRateLimit
-      ? `Batas kuota panggilan AI tercapai (${model}). Sistem mengaktifkan fallback otomatis.`
-      : `AI tidak merespons: ${errorMsg}`,
-  });
+    return respond({
+      status: isRateLimit ? "rate_limited" : isCapacity ? "capacity_limited" : "error",
+      available: false,
+      model,
+      provider: "google",
+      latency_ms: Date.now() - startTime,
+      message: isCapacity
+        ? `Server Google Gemini sedang mengalami lonjakan beban kapasitas global (503). Sistem Calorie Hunter AI otomatis mengaktifkan modul nutrisi cadangan deterministik yang tetap berfungsi 100%.`
+        : isRateLimit
+        ? `Batas kuota panggilan AI tercapai (${model}). Sistem mengaktifkan fallback otomatis.`
+        : `AI tidak merespons: ${errorMsg}`,
+    });
 }

@@ -49,10 +49,13 @@ export default function ProfilePage() {
     status: "online" | "rate_limited" | "error" | "no_key" | null;
     latency_ms?: number;
     message?: string;
+    env_keys_status?: Record<string, boolean>;
   }>({
     checking: false,
     status: null,
   });
+
+  const [isProfileSyncing, setIsProfileSyncing] = useState(false);
 
   // Activities section inside Onboarding
   const [activities, setActivities] = useState<Array<{
@@ -178,55 +181,85 @@ export default function ProfilePage() {
         }
       } catch {}
     }
+  }, []);
 
-    // 2. Fetch server status and activities
-    const syncServerData = async () => {
-      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  // Sync profile and activities with server
+  const syncServerData = async (silent = true) => {
+    if (!silent) setIsProfileSyncing(true);
+    const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-      try {
-        const [statusRes, actRes] = await Promise.all([
-          fetch("/api/auth/status", { headers }),
-          fetch("/api/activities", { headers }),
-        ]);
+    try {
+      const [statusRes, actRes] = await Promise.all([
+        fetch("/api/auth/status", { headers }),
+        fetch("/api/activities", { headers }),
+      ]);
 
-        if (statusRes.ok) {
-          const data = await statusRes.json();
-          if (data.profile) {
-            if (data.profile.full_name) setFullName(data.profile.full_name);
-            if (data.profile.gender) setGender(data.profile.gender);
-            if (data.profile.age) setAge(Number(data.profile.age));
-            if (data.profile.height_cm) setHeightCm(Number(data.profile.height_cm));
-            if (data.profile.weight_kg) setWeightKg(Number(data.profile.weight_kg));
-            if (data.profile.activity_level) setActivityLevel(data.profile.activity_level);
-          }
-          if (data.preferred_gemini_model) {
-            setSelectedModel(data.preferred_gemini_model);
-          }
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        if (data.profile) {
+          if (data.profile.full_name) setFullName(data.profile.full_name);
+          if (data.profile.gender) setGender(data.profile.gender);
+          if (data.profile.age) setAge(Number(data.profile.age));
+          if (data.profile.height_cm) setHeightCm(Number(data.profile.height_cm));
+          if (data.profile.weight_kg) setWeightKg(Number(data.profile.weight_kg));
+          if (data.profile.activity_level) setActivityLevel(data.profile.activity_level);
         }
-
-        if (actRes.ok) {
-          const actData = await actRes.json();
-          if (Array.isArray(actData.activities) && actData.activities.length > 0) {
-            const serverActs = actData.activities.map((a: any) => ({
-              id: a.id || `act-${Math.random()}`,
-              activity_name: a.activity_name,
-              frequency_per_week: Number(a.frequency_per_week) || 3,
-              duration_minutes: Number(a.duration_minutes) || 30,
-              intensity: a.intensity || "moderate",
-              checked: true,
-            }));
-            setActivities(prev => {
-              const names = new Set(serverActs.map((s: any) => s.activity_name.toLowerCase()));
-              const remaining = prev.filter(p => !names.has(p.activity_name.toLowerCase())).map(p => ({ ...p, checked: false }));
-              return [...serverActs, ...remaining];
-            });
-          }
+        if (data.preferred_gemini_model) {
+          setSelectedModel(data.preferred_gemini_model);
         }
-      } catch {}
+      }
+
+      if (actRes.ok) {
+        const actData = await actRes.json();
+        if (Array.isArray(actData.activities) && actData.activities.length > 0) {
+          const serverActs = actData.activities.map((a: any) => ({
+            id: a.id || `act-${Math.random()}`,
+            activity_name: a.activity_name,
+            frequency_per_week: Number(a.frequency_per_week) || 3,
+            duration_minutes: Number(a.duration_minutes) || 30,
+            intensity: a.intensity || "moderate",
+            checked: true,
+          }));
+          setActivities(prev => {
+            const names = new Set(serverActs.map((s: any) => s.activity_name.toLowerCase()));
+            const remaining = prev.filter(p => !names.has(p.activity_name.toLowerCase())).map(p => ({ ...p, checked: false }));
+            return [...serverActs, ...remaining];
+          });
+        }
+      }
+
+      if (!silent) {
+        setFeedback({
+          type: "success",
+          msg: "Data profil & aktivitas berhasil disinkronkan dari database Cloud!",
+        });
+      }
+    } catch {
+      if (!silent) {
+        setFeedback({
+          type: "error",
+          msg: "Gagal menghubungkan ke Cloud database.",
+        });
+      }
+    } finally {
+      if (!silent) setIsProfileSyncing(false);
+    }
+  };
+
+  // Initial sync & global event listener
+  useEffect(() => {
+    syncServerData(true);
+    checkAiHealth();
+
+    const handleGlobalSync = () => {
+      syncServerData(false);
     };
 
-    syncServerData();
+    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    return () => {
+      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    };
   }, []);
 
   const handleModelChange = (newModel: string) => {
@@ -241,7 +274,7 @@ export default function ProfilePage() {
 
   const checkAiHealth = async (modelToCheck?: string) => {
     const model = modelToCheck || selectedModel;
-    setAiHealth({ checking: true, status: null });
+    setAiHealth(prev => ({ ...prev, checking: true, status: null }));
 
     try {
       const res = await fetch(`/api/ai/health?model=${encodeURIComponent(model)}`);
@@ -251,13 +284,15 @@ export default function ProfilePage() {
         status: data.status,
         latency_ms: data.latency_ms,
         message: data.message,
+        env_keys_status: data.env_keys_status,
       });
     } catch {
-      setAiHealth({
+      setAiHealth(prev => ({
+        ...prev,
         checking: false,
         status: "error",
         message: "Tidak dapat terhubung ke server AI Health Check.",
-      });
+      }));
     }
   };
 
@@ -367,9 +402,21 @@ export default function ProfilePage() {
                   </span>
                 </div>
               </div>
-              <span className="font-mono text-[10px] sm:text-xs px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold">
-                FASE 1: AKTIF
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => syncServerData(false)}
+                  disabled={isProfileSyncing}
+                  className="py-1 px-2.5 rounded hud-card-inner border hud-border hover:border-primary font-mono text-[10px] sm:text-[11px] font-bold uppercase flex items-center gap-1.5 text-slate-300 hover:text-white transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                  title="Sinkronkan data profil dari database Cloud"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isProfileSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+                  <span>{isProfileSyncing ? "SINKRONISASI..." : "SINKRONKAN CLOUD"}</span>
+                </button>
+                <span className="font-mono text-[10px] sm:text-xs px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold hidden sm:inline-block">
+                  FASE 1: AKTIF
+                </span>
+              </div>
             </div>
 
             {feedback && (
@@ -778,11 +825,19 @@ export default function ProfilePage() {
                   </optgroup>
                 </select>
 
-                <div className="p-2 rounded hud-card-inner border hud-border text-[11px] space-y-1">
-                  <span className="text-slate-300 block">{getGeminiModelById(selectedModel).description}</span>
-                  <span className="text-[10px] text-amber-400 font-mono block">
-                    Kebutuhan Variabel Vercel: <strong>{getGeminiModelById(selectedModel).envKeyName}</strong>
-                  </span>
+                <div className="p-2.5 rounded hud-card-inner border hud-border text-[11px] space-y-1.5">
+                  <span className="text-slate-300 block leading-relaxed">{getGeminiModelById(selectedModel).description}</span>
+                  {aiHealth.env_keys_status?.[getGeminiModelById(selectedModel).envKeyName] ? (
+                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono pt-1 border-t hud-border">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>Variabel Vercel Terhubung: <strong>{getGeminiModelById(selectedModel).envKeyName}</strong> (Aktif)</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono pt-1 border-t hud-border">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
+                      <span>Target Variabel Vercel: <strong className="text-slate-200">{getGeminiModelById(selectedModel).envKeyName}</strong></span>
+                    </div>
+                  )}
                 </div>
               </div>
 

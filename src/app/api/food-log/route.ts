@@ -225,15 +225,6 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const ip = req.headers.get("x-forwarded-for") || "client-local";
-    const rl = checkRateLimit(`food-log:${ip}`, { limit: 20, windowMs: 60 * 1000 });
-    if (!rl.success) {
-      return NextResponse.json(
-        { error: "Batas permintaan terlampaui. Silakan tunggu 1 menit sebelum menganalisis makanan lagi." },
-        { status: 429 }
-      );
-    }
-
     const supabase = createServerClient(req);
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -384,6 +375,17 @@ export async function POST(req: Request) {
     const headerModel = req.headers.get("x-ai-model")?.trim();
     const effectiveModel = formModel || headerModel || selectedModel || PRIMARY_GEMINI_MODEL;
 
+    // Per-client rate limit for AI inference (60 requests / minute)
+    const rawIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "client-local";
+    const clientIp = rawIp.split(",")[0].trim();
+    const rl = checkRateLimit(`food-scan:${clientIp}`, { limit: 60, windowMs: 60 * 1000 });
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: "Batas permintaan analisis terlampaui. Silakan tunggu sebentar sebelum menganalisis makanan lagi." },
+        { status: 429 }
+      );
+    }
+
     // Validate that at least one input is provided (photo or text or both)
     if (!photoFile && !manualText) {
       return NextResponse.json(
@@ -485,8 +487,14 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
     let modelUsed = effectiveModel;
     let isFallback = false;
 
-    // Multi-Provider Step 1: OpenAI Series (GPT-5.6 Luna, GPT-5 Thinking Mini)
-    if (effectiveModel.startsWith("gpt-") && process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
+    // -------------------------------------------------------------------------
+    // MULTI-PROVIDER RESILIENT EXECUTION CASCADE
+    // Ensures seamless failover between Gemini, OpenAI, and DeepSeek if any hit 429 quota/rate limit
+    // -------------------------------------------------------------------------
+
+    // Runner 1: OpenAI (supports vision + text)
+    const runOpenAi = async (modelToUse = "gpt-4o") => {
+      if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes("placeholder")) return null;
       try {
         const userContent: any[] = [
           {
@@ -508,7 +516,7 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
             Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
           body: JSON.stringify({
-            model: effectiveModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o",
+            model: modelToUse,
             messages: [{ role: "user", content: userContent }],
             response_format: { type: "json_object" },
             temperature: 0.2,
@@ -521,17 +529,21 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
           const rawContent = oaiData.choices?.[0]?.message?.content || "";
           const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
           if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-            aiResult = parsed;
-            modelUsed = effectiveModel;
+            return parsed;
           }
+        } else {
+          const errData = await oaiRes.json().catch(() => ({}));
+          console.warn("[OpenAI FoodScan] Response not ok:", errData);
         }
       } catch (oaiErr: any) {
-        console.warn(`[OpenAI FoodScan] Model ${effectiveModel} failed, trying fallback:`, oaiErr.message);
+        console.warn(`[OpenAI FoodScan] Error:`, oaiErr.message);
       }
-    }
+      return null;
+    };
 
-    // Multi-Provider Step 2: DeepSeek Series (DeepSeek-V4-Flash, DeepSeek-V4-Pro)
-    if (!aiResult && effectiveModel.startsWith("deepseek-") && process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")) {
+    // Runner 2: DeepSeek (supports text inference)
+    const runDeepSeek = async (modelToUse = "deepseek-chat") => {
+      if (!process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY.includes("placeholder")) return null;
       try {
         const dsPrompt = `${promptText}\nOutput strictly valid JSON with format: {"items":[{"food_name":"...","estimated_weight_g":100,"calories_kcal":200,"macros":{"carbs_g":20,"protein_g":15,"fat_g":5,"fiber_g":2,"sugar_g":1},"micros":{"sodium_mg":150,"potassium_mg":150,"vitamin_c_mg":5},"confidence":0.9}],"total_calories_kcal":200}`;
         const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
@@ -541,7 +553,7 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
             Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
           },
           body: JSON.stringify({
-            model: effectiveModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat",
+            model: modelToUse,
             messages: [{ role: "user", content: dsPrompt }],
             response_format: { type: "json_object" },
             temperature: 0.2,
@@ -554,17 +566,18 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
           const rawContent = dsData.choices?.[0]?.message?.content || "";
           const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
           if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-            aiResult = parsed;
-            modelUsed = effectiveModel;
+            return parsed;
           }
         }
       } catch (dsErr: any) {
-        console.warn(`[DeepSeek FoodScan] Model ${effectiveModel} failed, trying fallback:`, dsErr.message);
+        console.warn(`[DeepSeek FoodScan] Error:`, dsErr.message);
       }
-    }
+      return null;
+    };
 
-    // Multi-Provider Step 3: Google Gemini call with model cascade fallback
-    if (!aiResult && process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "placeholder-gemini-key") {
+    // Runner 3: Google Gemini (supports vision + text with model cascade)
+    const runGemini = async () => {
+      if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "placeholder-gemini-key") return null;
       const contents: any[] = [];
       if (base64Image) {
         contents.push({
@@ -576,12 +589,13 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
       }
       contents.push(promptText);
 
-      // Models to try in priority order
       const candidateModels = [
         effectiveModel.startsWith("gemini-") ? effectiveModel : PRIMARY_GEMINI_MODEL,
         PRIMARY_GEMINI_MODEL,
         FALLBACK_GEMINI_MODEL,
-        "gemini-3.7-flash",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentCandidate of candidateModels) {
@@ -599,14 +613,68 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
 
           const text = response.text || "";
           if (text) {
-            aiResult = cleanAiJsonResponse(text) || JSON.parse(text);
-            if (aiResult && Array.isArray(aiResult.items) && aiResult.items.length > 0) {
-              modelUsed = effectiveModel.startsWith("gemini-") ? currentCandidate : effectiveModel;
-              break;
+            const parsed = cleanAiJsonResponse(text) || JSON.parse(text);
+            if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+              return { result: parsed, candidate: currentCandidate };
             }
           }
         } catch (err: any) {
           console.warn(`[Gemini FoodScan] Model ${currentCandidate} failed:`, err.message);
+        }
+      }
+      return null;
+    };
+
+    // Execute based on active model preference with automatic cascade to all available keys in Vercel
+    if (effectiveModel.startsWith("gpt-")) {
+      aiResult = await runOpenAi(effectiveModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o");
+      if (aiResult) {
+        modelUsed = effectiveModel;
+      } else {
+        // Failover 1: Gemini
+        const gemRes = await runGemini();
+        if (gemRes) {
+          aiResult = gemRes.result;
+          modelUsed = gemRes.candidate;
+        } else {
+          // Failover 2: DeepSeek
+          aiResult = await runDeepSeek();
+          if (aiResult) modelUsed = "deepseek-chat";
+        }
+      }
+    } else if (effectiveModel.startsWith("deepseek-")) {
+      aiResult = await runDeepSeek(effectiveModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat");
+      if (aiResult) {
+        modelUsed = effectiveModel;
+      } else {
+        // Failover 1: Gemini
+        const gemRes = await runGemini();
+        if (gemRes) {
+          aiResult = gemRes.result;
+          modelUsed = gemRes.candidate;
+        } else {
+          // Failover 2: OpenAI
+          aiResult = await runOpenAi("gpt-4o");
+          if (aiResult) modelUsed = "gpt-4o";
+        }
+      }
+    } else {
+      // Default: Google Gemini
+      const gemRes = await runGemini();
+      if (gemRes) {
+        aiResult = gemRes.result;
+        modelUsed = effectiveModel.startsWith("gemini-") ? gemRes.candidate : effectiveModel;
+      } else {
+        // AUTOMATIC FAILOVER: If Gemini quota is exceeded (429) or overloaded, use OpenAI or DeepSeek from Vercel!
+        if (process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
+          console.info("[FoodScan] Gemini quota reached or error encountered. Automatically failing over to OpenAI...");
+          aiResult = await runOpenAi("gpt-4o");
+          if (aiResult) modelUsed = "gpt-4o (Failover)";
+        }
+        if (!aiResult && process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")) {
+          console.info("[FoodScan] Automatically failing over to DeepSeek...");
+          aiResult = await runDeepSeek("deepseek-chat");
+          if (aiResult) modelUsed = "deepseek-chat (Failover)";
         }
       }
     }

@@ -275,32 +275,17 @@ export default function TrackingMakananPage() {
         const data = await res.json();
         if (Array.isArray(data.items)) {
           setLogsByDate(prev => {
-            const localItems = prev[selectedDate] || [];
-
-            // If server returned records, merge them with local items
-            if (data.items.length > 0) {
-              const serverItemNames = new Set(data.items.map((it: any) => String(it.food_name).toLowerCase().trim()));
-              const unsyncedLocal = localItems.filter(
-                (local: any) => !serverItemNames.has(String(local.food_name).toLowerCase().trim())
-              );
-              const merged = [...data.items, ...unsyncedLocal];
-              const updated = { ...prev, [selectedDate]: merged };
-              localStorage.setItem("chai_food_logs_by_date", JSON.stringify(updated));
-              return updated;
-            }
-
-            // If server returned 0 items but local has items, preserve local
-            if (localItems.length > 0) {
-              return prev;
-            }
-
-            return prev;
+            const updated = { ...prev, [selectedDate]: data.items };
+            localStorage.setItem("chai_food_logs_by_date", JSON.stringify(updated));
+            return updated;
           });
 
-          if (!silent && data.items.length > 0) {
+          if (!silent) {
             setActionFeedback({
               type: "success",
-              msg: `Sinkronisasi cloud berhasil: ${data.items.length} menu makanan berhasil dimuat!`,
+              msg: data.items.length > 0 
+                ? `Sinkronisasi cloud sukses: ${data.items.length} menu makanan berhasil dimuat!`
+                : `Sinkronisasi cloud sukses: Belum ada menu tersimpan di tanggal ini.`,
             });
           }
         }
@@ -312,7 +297,7 @@ export default function TrackingMakananPage() {
     }
   };
 
-  // Fetch logged foods from database whenever selectedDate changes or window gains focus
+  // Fetch logged foods from database whenever selectedDate changes, window gains focus, or global sync triggered
   useEffect(() => {
     syncDateLogs(true);
 
@@ -322,11 +307,17 @@ export default function TrackingMakananPage() {
       }
     };
 
+    const handleGlobalSync = () => {
+      syncDateLogs(false);
+    };
+
     window.addEventListener("focus", handleSyncOnActive);
     window.addEventListener("visibilitychange", handleSyncOnActive);
+    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
     return () => {
       window.removeEventListener("focus", handleSyncOnActive);
       window.removeEventListener("visibilitychange", handleSyncOnActive);
+      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
     };
   }, [selectedDate]);
 
@@ -403,7 +394,7 @@ export default function TrackingMakananPage() {
 
         const img = new window.Image();
         img.onload = () => {
-          const maxDim = 1024;
+          const maxDim = 800;
           let w = img.width;
           let h = img.height;
           if (w > maxDim || h > maxDim) {
@@ -435,7 +426,7 @@ export default function TrackingMakananPage() {
                 setIsCompressingPhoto(false);
               },
               "image/jpeg",
-              0.80
+              0.78
             );
           } else {
             setSelectedFile(file);
@@ -1111,7 +1102,7 @@ export default function TrackingMakananPage() {
                     </div>
                   )}
 
-                  {previewUrl && (
+                    {previewUrl && (
                     <div className="space-y-2 p-3 rounded hud-card-inner border hud-border text-left">
                       <label className="text-[11px] font-mono hud-hero-text font-bold uppercase flex items-center gap-1.5">
                         <Type className="w-3.5 h-3.5" />
@@ -1127,26 +1118,6 @@ export default function TrackingMakananPage() {
                       <span className="text-[10px] text-outline block">
                         Opsional: Tuliskan catatan menu untuk membantu sensor AI mendeteksi dengan presisi tinggi.
                       </span>
-
-                      {/* Quick Presets for Photo Hint */}
-                      <div className="pt-2 border-t hud-border space-y-1.5">
-                        <span className="text-[10px] text-outline font-mono uppercase flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-cyan-400" />
-                          <span>Pilihan Cepat Menu (Klik untuk isi petunjuk):</span>
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {QUICK_MEAL_PRESETS.map((preset, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => setPhotoHint(preset.hint)}
-                              className="px-2 py-1 rounded hud-card border hud-border text-[10px] font-mono hover:border-primary hover:text-cyan-400 transition-colors text-left cursor-pointer"
-                            >
-                              {preset.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     </div>
                   )}
                 </div>

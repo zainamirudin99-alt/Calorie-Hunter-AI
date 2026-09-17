@@ -74,102 +74,113 @@ export default function DashboardPage() {
     }
   }, [isUltraman, defaultCompanionName]);
 
+  const [isDashboardSyncing, setIsDashboardSyncing] = useState(false);
+
+  // Reusable dashboard sync function
+  const fetchDashboardSummary = async (silent = true) => {
+    if (!silent) setIsDashboardSyncing(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+      const headers: Record<string, string> = {
+        "Cache-Control": "no-cache",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      // Single round-trip post-login aggregation endpoint
+      const res = await fetch("/api/dashboard/summary", { headers });
+      if (res.status === 401) {
+        window.location.href = "/auth";
+        return;
+      }
+      if (!res.ok) {
+        window.location.href = "/auth";
+        return;
+      }
+
+      const data = await res.json();
+      if (!data.authenticated) {
+        window.location.href = "/auth";
+        return;
+      }
+      // Incomplete profile -> redirect to /profile
+      if (!data.has_profile) {
+        window.location.href = "/profile";
+        return;
+      }
+      // Incomplete or no active program -> redirect to /program
+      if (!data.has_program) {
+        window.location.href = "/program";
+        return;
+      }
+
+      // Synchronize cloud companion so Desktop and Mobile are 100% in sync
+      if (data.companion && (data.companion.avatar_url || data.companion.character_name)) {
+        if (data.companion.character_name) setCompanionName(data.companion.character_name);
+        if (data.companion.avatar_url) setCompanionAvatar(data.companion.avatar_url);
+        localStorage.setItem("chai_companion_data", JSON.stringify(data.companion));
+      }
+
+      setTelemetry(data);
+
+      if (Array.isArray(data.today_food_items) && data.today_food_items.length > 0) {
+        setTodayFoodList(data.today_food_items);
+        // Mirror server food items to local device storage for offline and fast render
+        const d = new Date();
+        const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem("chai_food_logs_by_date") || "{}");
+          currentLocal[localTodayStr] = data.today_food_items;
+          localStorage.setItem("chai_food_logs_by_date", JSON.stringify(currentLocal));
+        } catch {}
+      } else {
+        // Check localStorage with local date (matching scanner format YYYY-MM-DD)
+        const d = new Date();
+        const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const utcTodayStr = d.toISOString().split("T")[0];
+        const localLogs = localStorage.getItem("chai_food_logs_by_date");
+        if (localLogs) {
+          try {
+            const parsed = JSON.parse(localLogs);
+            const itemsForToday = parsed[localTodayStr] || parsed[utcTodayStr];
+            if (Array.isArray(itemsForToday)) {
+              setTodayFoodList(itemsForToday);
+            }
+          } catch {}
+        }
+      }
+
+      setIsCheckingAuth(false);
+    } catch {
+      setIsCheckingAuth(false);
+    } finally {
+      if (!silent) setIsDashboardSyncing(false);
+    }
+  };
+
   // Verify session, onboarding completeness, and telemetry in a single round-trip
   useEffect(() => {
-    const verifyStatus = async () => {
-      try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
-        const headers: Record<string, string> = {
-          "Cache-Control": "no-cache",
-        };
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-
-        // Single round-trip post-login aggregation endpoint
-        const res = await fetch("/api/dashboard/summary", { headers });
-        if (res.status === 401) {
-          window.location.href = "/auth";
-          return;
-        }
-        if (!res.ok) {
-          window.location.href = "/auth";
-          return;
-        }
-
-        const data = await res.json();
-        if (!data.authenticated) {
-          window.location.href = "/auth";
-          return;
-        }
-        // Incomplete profile -> redirect to /profile
-        if (!data.has_profile) {
-          window.location.href = "/profile";
-          return;
-        }
-        // Incomplete or no active program -> redirect to /program
-        if (!data.has_program) {
-          window.location.href = "/program";
-          return;
-        }
-
-        // Synchronize cloud companion so Desktop and Mobile are 100% in sync
-        if (data.companion && (data.companion.avatar_url || data.companion.character_name)) {
-          if (data.companion.character_name) setCompanionName(data.companion.character_name);
-          if (data.companion.avatar_url) setCompanionAvatar(data.companion.avatar_url);
-          localStorage.setItem("chai_companion_data", JSON.stringify(data.companion));
-        }
-
-        setTelemetry(data);
-
-        if (Array.isArray(data.today_food_items) && data.today_food_items.length > 0) {
-          setTodayFoodList(data.today_food_items);
-          // Mirror server food items to local device storage for offline and fast render
-          const d = new Date();
-          const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-          try {
-            const currentLocal = JSON.parse(localStorage.getItem("chai_food_logs_by_date") || "{}");
-            currentLocal[localTodayStr] = data.today_food_items;
-            localStorage.setItem("chai_food_logs_by_date", JSON.stringify(currentLocal));
-          } catch {}
-        } else {
-          // Check localStorage with local date (matching scanner format YYYY-MM-DD)
-          const d = new Date();
-          const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-          const utcTodayStr = d.toISOString().split("T")[0];
-          const localLogs = localStorage.getItem("chai_food_logs_by_date");
-          if (localLogs) {
-            try {
-              const parsed = JSON.parse(localLogs);
-              const itemsForToday = parsed[localTodayStr] || parsed[utcTodayStr];
-              if (Array.isArray(itemsForToday)) {
-                setTodayFoodList(itemsForToday);
-              }
-            } catch {}
-          }
-        }
-
-        // All onboarding steps completed and telemetry populated
-        setIsCheckingAuth(false);
-      } catch {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    verifyStatus();
+    fetchDashboardSummary(true);
 
     const handleFocusSync = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        verifyStatus();
+        fetchDashboardSummary(true);
       }
+    };
+
+    const handleGlobalSync = () => {
+      fetchDashboardSummary(false);
     };
 
     window.addEventListener("visibilitychange", handleFocusSync);
     window.addEventListener("focus", handleFocusSync);
+    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
 
     return () => {
       window.removeEventListener("visibilitychange", handleFocusSync);
       window.removeEventListener("focus", handleFocusSync);
+      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
     };
   }, [router, defaultCompanionName]);
 
@@ -402,13 +413,25 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <Link
-            href="/scanner"
-            className="hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 shadow hover:opacity-90 shrink-0 text-black dark:text-black"
-          >
-            <span>BUKA TRACKING MAKANAN</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => fetchDashboardSummary(false)}
+              disabled={isDashboardSyncing}
+              className="py-2 px-3 sm:px-3.5 rounded hud-card-inner border hud-border hover:border-primary/60 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 text-slate-300 hover:text-white disabled:opacity-50 flex-1 sm:flex-initial cursor-pointer shadow-sm"
+              title="Segarkan data terbaru dari database cloud"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isDashboardSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+              <span>{isDashboardSyncing ? "MENYINKRONKAN..." : "SINKRONKAN CLOUD"}</span>
+            </button>
+            <Link
+              href="/scanner"
+              className="hud-clip-chamfer hud-hero-bg py-2 px-3.5 sm:px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow hover:opacity-90 flex-1 sm:flex-initial text-black dark:text-black"
+            >
+              <span>BUKA TRACKING</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 items-start">

@@ -11,7 +11,9 @@ import {
   X,
   ArrowLeftRight,
   User,
-  LayoutDashboard
+  LayoutDashboard,
+  RefreshCw,
+  Cloud
 } from "lucide-react";
 
 interface HeaderProps {
@@ -22,6 +24,17 @@ interface HeaderProps {
 export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: HeaderProps) {
   const { isUltraman, toggleTheme, toggleSidebar } = useTacticalTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isGlobalSyncing, setIsGlobalSyncing] = useState(false);
+
+  const handleCloudSync = () => {
+    setIsGlobalSyncing(true);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("chai_trigger_cloud_sync"));
+    }
+    setTimeout(() => {
+      setIsGlobalSyncing(false);
+    }, 1200);
+  };
 
   const handleSidebarClick = () => {
     if (onOpenSidebar) {
@@ -159,6 +172,23 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
           <ArrowLeftRight className="w-3 h-3 text-outline group-hover:hud-hero-text transition-colors hidden sm:inline" />
         </button>
 
+        {/* UNIVERSAL CLOUD SYNC TRIGGER (DESKTOP & MOBILE) */}
+        <button
+          onClick={handleCloudSync}
+          disabled={isGlobalSyncing}
+          className="relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded border hud-border hud-card-inner hover:border-primary transition-all duration-200 shadow-sm group cursor-pointer text-slate-300 hover:text-white disabled:opacity-50"
+          title="Sinkronisasi seluruh data dengan database Cloud (Desktop & Mobile Sync)"
+          aria-label="Sinkronisasi Cloud"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isGlobalSyncing ? "animate-spin text-primary" : "text-cyan-400 group-hover:rotate-180 transition-transform duration-500"}`} />
+          <span className="font-mono text-[10px] sm:text-[11px] font-bold uppercase hidden sm:inline">
+            {isGlobalSyncing ? "SYNCING..." : "SYNC CLOUD"}
+          </span>
+          <span className="sm:hidden font-mono text-[10px] font-bold text-cyan-400">
+            {isGlobalSyncing ? "SYNC..." : "SYNC"}
+          </span>
+        </button>
+
         {/* Telemetry Badges (Desktop) */}
         <div className="hidden 2xl:flex items-center gap-2 border hud-border hud-card-inner px-3 py-1 rounded">
           <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
@@ -253,6 +283,18 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
             <span>► Aktivitas & Hobi</span>
             <span className="text-[10px] text-outline font-mono">[06]</span>
           </Link>
+          <button
+            type="button"
+            onClick={() => {
+              handleCloudSync();
+              setMobileMenuOpen(false);
+            }}
+            disabled={isGlobalSyncing}
+            className="w-full mt-1 py-2 px-3 rounded hud-card-inner border border-primary/40 text-cyan-400 font-mono text-[11px] font-bold uppercase flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isGlobalSyncing ? "animate-spin" : ""}`} />
+            <span>{isGlobalSyncing ? "MENYINKRONKAN CLOUD..." : "SINKRONKAN DENGAN CLOUD"}</span>
+          </button>
           <div className="pt-2 border-t hud-border flex items-center justify-between text-[10px] sm:text-[11px] hud-text-muted">
             <span>STREAK: 18 HARI</span>
             <span className="hud-hero-text font-bold">LVL 42 // S-RANK</span>

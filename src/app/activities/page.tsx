@@ -17,7 +17,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   ArrowRight,
-  Flame
+  Flame,
+  RefreshCw
 } from "lucide-react";
 
 export default function ActivitiesPage() {
@@ -36,7 +37,7 @@ export default function ActivitiesPage() {
     {
       id: "act-2",
       user_id: "demo",
-      activity_name: "Lari Pagi / Jogging",
+      activity_name: "Jogging Pagi / Lari Santai",
       frequency_per_week: 3,
       duration_minutes: 30,
       intensity: "moderate",
@@ -51,23 +52,48 @@ export default function ActivitiesPage() {
   const [intensity, setIntensity] = useState<ActivityIntensity>("moderate");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [isActSyncing, setIsActSyncing] = useState(false);
 
-  // Load from API or localStorage
-  useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        const res = await fetch("/api/activities");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.activities && data.activities.length > 0) {
-            setActivities(data.activities);
-          }
+  // Reusable sync activities from API
+  const fetchActivities = async (silent = true) => {
+    if (!silent) setIsActSyncing(true);
+    try {
+      const res = await fetch("/api/activities");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.activities && data.activities.length > 0) {
+          setActivities(data.activities);
         }
-      } catch {
-        // Fallback to local activities
+        if (!silent) {
+          setFeedback({
+            type: "success",
+            msg: "Daftar aktivitas berhasil disinkronkan dari Cloud!",
+          });
+        }
       }
+    } catch {
+      if (!silent) {
+        setFeedback({
+          type: "error",
+          msg: "Gagal menyinkronkan aktivitas dari server.",
+        });
+      }
+    } finally {
+      if (!silent) setIsActSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchActivities(true);
+
+    const handleGlobalSync = () => {
+      fetchActivities(false);
     };
-    fetchActivities();
+
+    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    return () => {
+      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    };
   }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -150,13 +176,25 @@ export default function ActivitiesPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-1.5 shadow-md hover:opacity-90 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ TAMBAH AKTIVITAS</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fetchActivities(false)}
+              disabled={isActSyncing}
+              className="py-2 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-xs font-bold uppercase transition-all flex items-center gap-1.5 text-slate-300 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
+              title="Sinkronkan aktivitas tersimpan dari database Cloud"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isActSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+              <span>{isActSyncing ? "MENYINKRONKAN..." : "SINKRONKAN CLOUD"}</span>
+            </button>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-1.5 shadow-md hover:opacity-90 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ TAMBAH AKTIVITAS</span>
+            </button>
+          </div>
         </div>
 
         {feedback && (
