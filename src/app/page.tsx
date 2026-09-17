@@ -33,10 +33,53 @@ import {
   Edit3,
   Upload,
   Wand2,
-  X,
-  UtensilsCrossed
+  X, 
+  UtensilsCrossed,
+  Cpu
 } from "lucide-react";
 import { calculateRemainingCalories } from "@/lib/tdee/calculator";
+import { useSelectedAiModel, GEMINI_MODELS } from "@/lib/gemini/models";
+
+function getProceduralCompanionSvg(name: string, isUltraman: boolean): string {
+  const primaryColor = isUltraman ? "#ef4444" : "#06b6d4";
+  const glowColor = isUltraman ? "#fbbf24" : "#3b82f6";
+  const title = isUltraman ? "ULTRA MECHA" : "CYBER KAIJU";
+  const safeName = (name || "COMPANION").replace(/[<>&"]/g, "").toUpperCase().substring(0, 18);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+      <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#0f172a"/>
+        <stop offset="100%" stop-color="#020617"/>
+      </radialGradient>
+      <linearGradient id="blade" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="${primaryColor}"/>
+        <stop offset="100%" stop-color="${glowColor}"/>
+      </linearGradient>
+      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="6" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <rect width="400" height="400" fill="url(#bg)"/>
+    <path d="M0,100 L400,100 M0,200 L400,200 M0,300 L400,300 M100,0 L100,400 M200,0 L200,400 M300,0 L300,400" stroke="#1e293b" stroke-width="1" opacity="0.6"/>
+    <polygon points="200,40 340,120 340,280 200,360 60,280 60,120" fill="none" stroke="${primaryColor}" stroke-width="3" filter="url(#glow)"/>
+    <polygon points="200,60 320,130 320,270 200,340 80,270 80,130" fill="#020617" stroke="#334155" stroke-width="1" opacity="0.8"/>
+    <path d="M140,170 L200,110 L260,170 L200,240 Z" fill="url(#blade)" filter="url(#glow)"/>
+    <circle cx="200" cy="180" r="18" fill="#ffffff" filter="url(#glow)"/>
+    <path d="M110,210 L160,230 L200,280 L240,230 L290,210 L260,260 L200,310 L140,260 Z" fill="${primaryColor}" opacity="0.7"/>
+    <line x1="200" y1="110" x2="200" y2="60" stroke="${glowColor}" stroke-width="3" stroke-dasharray="4,4"/>
+    <rect x="90" y="325" width="220" height="28" rx="4" fill="#090d16" stroke="${primaryColor}" stroke-width="1.5"/>
+    <text x="200" y="344" font-family="monospace" font-size="12" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="2">${safeName}</text>
+    <text x="200" y="88" font-family="monospace" font-size="10" font-weight="bold" fill="${primaryColor}" text-anchor="middle" letter-spacing="3">[${title}]</text>
+  </svg>`;
+  if (typeof window !== "undefined" && typeof window.btoa === "function") {
+    return `data:image/svg+xml;base64,${window.btoa(svg)}`;
+  }
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -47,7 +90,19 @@ export default function DashboardPage() {
 
   // Companion character customization state
   const defaultCompanionName = isUltraman ? "ULTRA-GUARDIAN" : "VOLT-FANG";
-  const defaultCompanionAvatar = "https://lh3.googleusercontent.com/aida-public/AB6AXuAVO6miNoH-FgRBDaHTjNKtiRwfWLhiRklLi_OhT69Y7kJb1fyWTwgI_BrOe41ffmqCbspeXEaiRB00FttDC5urU0NEqHhNZV2Dx8ajWDz8CzofWlC1YeBesV8kmo3pmHN0Im473PLW5iWp-JcvfqbTqVxjgxhN7dor9LSL1eoTJaUo18SGAs6wCIUsN6_YEOEpYgUqGiE8B0DYLV6sZg3cncPAfffv6D2O52TcM8Q7eKICzXKMoWqo";
+  const defaultCompanionAvatar = isUltraman
+    ? "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80"
+    : "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?auto=format&fit=crop&w=600&q=80";
+
+  const { modelId: activeGlobalModelId, availableModels } = useSelectedAiModel();
+  const [selectedCompanionModel, setSelectedCompanionModel] = useState<string>(activeGlobalModelId);
+
+  // Sync companion model with global model initially
+  useEffect(() => {
+    if (activeGlobalModelId) {
+      setSelectedCompanionModel(activeGlobalModelId);
+    }
+  }, [activeGlobalModelId]);
 
   const [companionName, setCompanionName] = useState<string>(defaultCompanionName);
   const [companionAvatar, setCompanionAvatar] = useState<string>(defaultCompanionAvatar);
@@ -67,12 +122,23 @@ export default function DashboardPage() {
       try {
         const parsed = JSON.parse(saved);
         if (parsed.character_name) setCompanionName(parsed.character_name);
-        if (parsed.avatar_url) setCompanionAvatar(parsed.avatar_url);
+        if (parsed.avatar_url) {
+          // If stored avatar is an invalid public food-photos URL or dead link, fallback safely
+          if (
+            parsed.avatar_url.includes("/storage/v1/object/public/food-photos/") ||
+            parsed.avatar_url.includes("lh3.googleusercontent.com")
+          ) {
+            setCompanionAvatar(getProceduralCompanionSvg(parsed.character_name || defaultCompanionName, isUltraman));
+          } else {
+            setCompanionAvatar(parsed.avatar_url);
+          }
+        }
       } catch {}
     } else {
       setCompanionName(defaultCompanionName);
+      setCompanionAvatar(defaultCompanionAvatar);
     }
-  }, [isUltraman, defaultCompanionName]);
+  }, [isUltraman, defaultCompanionName, defaultCompanionAvatar]);
 
   const [isDashboardSyncing, setIsDashboardSyncing] = useState(false);
 
@@ -234,12 +300,13 @@ export default function DashboardPage() {
   };
 
   const handleGenerateAiCompanion = async () => {
-    if (!customNameInput.trim()) {
+    const targetName = customNameInput.trim() || companionName;
+    if (!targetName) {
       setCompanionStatusMsg({ type: "error", text: "Tuliskan nama karakter terlebih dahulu." });
       return;
     }
     if (!characterDescInput.trim()) {
-      setCompanionStatusMsg({ type: "error", text: "Tuliskan deskripsi/tipe karakter terlebih dahulu." });
+      setCompanionStatusMsg({ type: "error", text: "Tuliskan deskripsi/prompt visual karakter terlebih dahulu." });
       return;
     }
 
@@ -251,9 +318,10 @@ export default function DashboardPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          character_name: customNameInput.trim(),
+          character_name: targetName,
           character_description: characterDescInput.trim(),
           theme: isUltraman ? "ultraman" : "godzilla",
+          model_id: selectedCompanionModel,
         }),
       });
 
@@ -262,8 +330,21 @@ export default function DashboardPage() {
         throw new Error(data.error || "Gagal menghasilkan visual AI");
       }
 
+      // Langsung masuk sebagai gambar companion (instant apply & cloud sync)
+      const companionObj = {
+        character_name: targetName,
+        avatar_url: data.image_url,
+        character_description: characterDescInput.trim(),
+      };
+      setCompanionName(targetName);
+      setCompanionAvatar(data.image_url);
       setAiGeneratedUrl(data.image_url);
-      setCompanionStatusMsg({ type: "success", text: "Visual AI berhasil dibuat! Tekan 'Terapkan' untuk menyimpan." });
+      localStorage.setItem("chai_companion_data", JSON.stringify(companionObj));
+      syncCompanionToCloud(companionObj);
+      setCompanionStatusMsg({
+        type: "success",
+        text: "Visual AI berhasil dibuat & langsung terpasang pada Companion!",
+      });
     } catch (err: any) {
       setCompanionStatusMsg({ type: "error", text: err.message || "Gagal generate gambar AI." });
     } finally {
@@ -271,30 +352,6 @@ export default function DashboardPage() {
     }
   };
 
-  const handleApplyAiCompanion = async () => {
-    if (!aiGeneratedUrl) return;
-    const finalName = customNameInput.trim() || companionName;
-    const data = {
-      character_name: finalName,
-      avatar_url: aiGeneratedUrl,
-      character_description: characterDescInput.trim(),
-    };
-    setCompanionName(finalName);
-    setCompanionAvatar(aiGeneratedUrl);
-    localStorage.setItem("chai_companion_data", JSON.stringify(data));
-    setCompanionStatusMsg({ type: "success", text: "Companion AI berhasil diterapkan dan disinkronkan!" });
-
-    const synced = await syncCompanionToCloud(data);
-    if (synced?.companion?.avatar_url) {
-      setCompanionAvatar(synced.companion.avatar_url);
-      localStorage.setItem("chai_companion_data", JSON.stringify(synced.companion));
-    }
-
-    setTimeout(() => {
-      setIsCompanionModalOpen(false);
-      setCompanionStatusMsg(null);
-    }, 900);
-  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -485,6 +542,12 @@ export default function DashboardPage() {
               <img
                 src={companionAvatar}
                 alt={companionName}
+                onError={(e) => {
+                  const fallback = getProceduralCompanionSvg(companionName, isUltraman);
+                  if (e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
                 className="w-full h-full object-cover opacity-85 glow-companion transition-all duration-500"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
@@ -1082,26 +1145,49 @@ export default function DashboardPage() {
             {/* TAB 2: GENERATE AI */}
             {companionEditMode === "ai" && (
               <div className="space-y-4">
-                <div className="hud-card-inner border hud-border rounded p-3">
-                  <div className="flex items-center justify-between text-[11px] font-mono mb-1.5">
+                <div className="hud-card-inner border hud-border rounded p-3 space-y-3">
+                  <div className="flex items-center justify-between text-[11px] font-mono">
                     <span className="text-slate-400">TEMA SISTEM AKTIF:</span>
                     <span className="hud-hero-text font-bold">
                       {isUltraman ? "ULTRAMAN LIGHT MECHA" : "GODZILLA DARK KAIJU"}
                     </span>
                   </div>
-                  <label className="block font-mono text-xs hud-text-muted mb-1 uppercase font-bold">
-                    Deskripsi / Tipe Karakter
-                  </label>
-                  <textarea
-                    value={characterDescInput}
-                    onChange={(e) => setCharacterDescInput(e.target.value)}
-                    placeholder="misal: Serigala cyborg bermata laser biru bertaring plasma dengan armor titanium hitam..."
-                    rows={3}
-                    className="w-full hud-card border hud-border rounded p-2 font-mono text-xs text-white focus:outline-none focus:border-primary resize-none"
-                  />
-                  <p className="font-mono text-[10px] text-outline mt-1">
-                    AI Gemini & generator akan mensintesis seni digital resolusi tinggi sesuai deskripsi dan tema aktif.
-                  </p>
+
+                  {/* Model AI Selector */}
+                  <div>
+                    <label className="block font-mono text-[11px] hud-text-muted mb-1 uppercase font-bold flex items-center gap-1.5">
+                      <Cpu className="w-3.5 h-3.5 hud-hero-text" />
+                      <span>PILIH MODEL AI GENERATOR</span>
+                    </label>
+                    <select
+                      value={selectedCompanionModel}
+                      onChange={(e) => setSelectedCompanionModel(e.target.value)}
+                      className="w-full hud-card border hud-border rounded p-2 font-mono text-xs text-white focus:outline-none focus:border-primary bg-slate-900 cursor-pointer"
+                    >
+                      {availableModels.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label} ({m.badge})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Character Description / Prompt Input */}
+                  <div>
+                    <label className="block font-mono text-[11px] hud-text-muted mb-1 uppercase font-bold">
+                      Deskripsi / Prompt Visual Karakter
+                    </label>
+                    <textarea
+                      value={characterDescInput}
+                      onChange={(e) => setCharacterDescInput(e.target.value)}
+                      placeholder="misal: Serigala cyborg bermata laser biru bertaring plasma dengan armor titanium hitam..."
+                      rows={3}
+                      className="w-full hud-card border hud-border rounded p-2 font-mono text-xs text-white focus:outline-none focus:border-primary resize-none"
+                    />
+                    <p className="font-mono text-[10px] text-outline mt-1">
+                      AI {availableModels.find((m) => m.id === selectedCompanionModel)?.shortName || "Multimodal"} akan memproses prompt dan hasilnya langsung otomatis diterapkan sebagai foto companion Anda.
+                    </p>
+                  </div>
                 </div>
 
                 {/* AI Image Generation Active Loading Box */}
@@ -1113,57 +1199,57 @@ export default function DashboardPage() {
                         MENSINTESIS VISUAL...
                       </span>
                       <span className="font-mono text-[10px] text-outline mt-1 text-center">
-                        Memproses bio-mech neural render
+                        Memproses bio-mech neural render & menerapkan
                       </span>
                     </div>
                   </div>
                 )}
 
-                {/* AI Image Preview Result */}
+                {/* AI Image Preview Result - Instant applied */}
                 {!isGeneratingAi && aiGeneratedUrl && (
-                  <div className="text-center my-2">
-                    <div className="relative w-44 h-44 mx-auto rounded-lg overflow-hidden border-2 border-primary shadow-lg mb-2 bg-black/60 flex items-center justify-center">
+                  <div className="text-center my-2 p-3 hud-card-inner border border-emerald-500/40 rounded bg-emerald-950/20">
+                    <div className="relative w-40 h-40 mx-auto rounded-lg overflow-hidden border-2 border-emerald-500 shadow-lg mb-2 bg-black/60 flex items-center justify-center">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={aiGeneratedUrl}
-                        alt="Hasil AI"
+                        alt="Hasil AI Terpasang"
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <span className="font-mono text-[11px] hud-beam-text block">Preview Visual AI Berhasil</span>
+                    <span className="font-mono text-xs text-emerald-300 font-bold block">✓ Visual AI Berhasil Diterapkan ke Companion</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompanionModalOpen(false);
+                        setCompanionStatusMsg(null);
+                      }}
+                      className="mt-2 text-xs px-3 py-1.5 rounded hud-card-high border hud-border hover:border-primary font-mono text-white inline-flex items-center gap-1.5"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>SELESAI & TUTUP</span>
+                    </button>
                   </div>
                 )}
 
-                <div className="flex gap-2">
+                <div>
                   <button
                     type="button"
                     onClick={handleGenerateAiCompanion}
                     disabled={isGeneratingAi}
-                    className="flex-1 hud-card-high border hud-border hover:border-primary py-2.5 px-3 font-mono text-xs font-bold uppercase hud-hero-text transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full hud-clip-chamfer hud-hero-bg py-2.5 px-3 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg"
                   >
                     {isGeneratingAi ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>MENSINTESIS VISUAL AI...</span>
+                        <span>MENSINTESIS VISUAL AI & MENERAPKAN...</span>
                       </>
                     ) : (
                       <>
                         <Wand2 className="w-4 h-4" />
-                        <span>{aiGeneratedUrl ? "GENERATE ULANG" : "GENERATE AI KARAKTER"}</span>
+                        <span>{aiGeneratedUrl ? "GENERATE ULANG DENGAN PROMPT BARU" : "GENERATE & TERAPKAN LANGSUNG"}</span>
                       </>
                     )}
                   </button>
-
-                  {aiGeneratedUrl && (
-                    <button
-                      type="button"
-                      onClick={handleApplyAiCompanion}
-                      className="hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>TERAPKAN</span>
-                    </button>
-                  )}
                 </div>
               </div>
             )}

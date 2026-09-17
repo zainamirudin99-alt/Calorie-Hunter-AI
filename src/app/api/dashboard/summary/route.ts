@@ -247,6 +247,28 @@ export async function GET(req: Request) {
         };
       }
 
+    let finalCompanion: any = profile?.companion_data || (profile?.avatar_url ? { avatar_url: profile.avatar_url, character_name: profile.username } : null);
+    if (finalCompanion?.avatar_url && typeof finalCompanion.avatar_url === "string") {
+      const rawUrl: string = finalCompanion.avatar_url;
+      if (rawUrl.includes("/storage/v1/object/public/food-photos/") || (rawUrl.includes("food-photos") && !rawUrl.includes("token="))) {
+        try {
+          const match = rawUrl.match(/food-photos\/(.+?)(?:\?|$)/);
+          if (match && match[1]) {
+            const storagePath = decodeURIComponent(match[1]);
+            const { data: signedData, error: signError } = await admin.storage
+              .from("food-photos")
+              .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+            if (!signError && signedData?.signedUrl) {
+              finalCompanion = {
+                ...finalCompanion,
+                avatar_url: signedData.signedUrl,
+              };
+            }
+          }
+        } catch {}
+      }
+    }
+
     return NextResponse.json({
       success: true,
       authenticated: true,
@@ -254,7 +276,7 @@ export async function GET(req: Request) {
       has_program: Boolean(program),
       profile: profile || null,
       program: program || null,
-      companion: profile?.companion_data || (profile?.avatar_url ? { avatar_url: profile.avatar_url, character_name: profile.username } : null),
+      companion: finalCompanion,
       daily_target_kcal: dailyTargetKcal,
       tdee_kcal: tdeeKcal,
       daily_history: dailyHistory,

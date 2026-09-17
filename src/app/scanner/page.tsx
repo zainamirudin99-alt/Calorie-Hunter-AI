@@ -59,16 +59,6 @@ interface LoggedFoodItem {
   };
 }
 
-const QUICK_MEAL_PRESETS = [
-  { label: "🍚 Nasi Padang Rendang", hint: "Nasi padang rendang sapi, daun singkong, sambal ijo", text: "1 porsi nasi padang (200g) + rendang sapi (80g) + daun singkong rebus (50g) + sambal hijau (15g)" },
-  { label: "🍗 Dada Ayam Bakar + Nasi", hint: "Nasi putih, dada ayam bakar tanpa kulit, lalapan timun", text: "Nasi putih (200g) + dada ayam bakar (150g) + tahu tempe bacem (75g) + lalapan timun sambal" },
-  { label: "🍳 Nasi Goreng Telur", hint: "Nasi goreng kampung telur ceplok dan acar", text: "1 piring nasi goreng kampung (250g) + telur ceplok goreng (55g) + kerupuk (15g) + irisan timun tomat" },
-  { label: "🥗 Gado-Gado Lontong Telur", hint: "Gado-gado sayur bumbu kacang telur rebus", text: "Gado-gado sayuran rebus (150g) + lontong (100g) + telur rebus 1 butir (55g) + bumbu kacang (50g)" },
-  { label: "🍲 Soto Ayam Lamongan", hint: "Soto ayam kuah bening koya soun telur", text: "1 mangkuk soto ayam lamongan (300g kuah & ayam 80g) + soun (50g) + telur rebus 1 butir + koya" },
-  { label: "🥣 Bubur Ayam Komplit", hint: "Bubur ayam cakwe suwiran ayam kerupuk", text: "1 mangkuk bubur ayam (250g) + suwiran ayam (50g) + cakwe (20g) + kedelai goreng (15g) + kerupuk" },
-  { label: "🐟 Ikan Bakar + Sayur Asem", hint: "Ikan nila bakar, sayur asem, nasi putih", text: "Nasi putih (200g) + ikan nila bakar bumbu kecap (150g) + sayur asem (200g) + sambal terasi" },
-  { label: "🥣 Oatmeal + Pisang Madu", hint: "Oatmeal matang susu dengan pisang dan madu", text: "Oatmeal matang (150g) + pisang ambon iris 1 buah (100g) + madu murni (15g) + susu low fat (100ml)" },
-];
 
 function getTodayString(): string {
   const d = new Date();
@@ -1139,26 +1129,6 @@ export default function TrackingMakananPage() {
                   <p className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
                     <span>💡 Multi-Menu: Tulis beberapa menu sekaligus dipisahkan koma, baris baru, atau &apos;+&apos;. AI akan otomatis memecah setiap menu secara rinci.</span>
                   </p>
-
-                  {/* Quick Presets for Manual Text */}
-                  <div className="space-y-1.5 pt-1">
-                    <span className="text-[10px] text-outline font-mono uppercase flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-cyan-400" />
-                      <span>Pilihan Cepat Menu Ransum (Klik untuk isi otomatis):</span>
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {QUICK_MEAL_PRESETS.map((preset, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => handleTextChange(preset.text)}
-                          className="px-2.5 py-1 rounded hud-card border hud-border text-[10px] font-mono hover:border-primary hover:text-cyan-400 transition-colors text-left cursor-pointer"
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               )}
 

@@ -4,6 +4,37 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+/**
+ * Ensures any private Supabase storage path (e.g. food-photos bucket) is properly
+ * signed for 10 years so it renders without 400/403 errors on all devices.
+ */
+async function resolveSafeAvatarUrl(admin: any, rawUrl: string | null): Promise<string | null> {
+  if (!rawUrl || typeof rawUrl !== "string") return null;
+  // Base64 data URLs are self-contained and always render
+  if (rawUrl.startsWith("data:image/")) return rawUrl;
+
+  // Convert broken public URL or raw path from private food-photos bucket to long-lived Signed URL
+  if (
+    rawUrl.includes("/storage/v1/object/public/food-photos/") ||
+    (rawUrl.includes("food-photos") && !rawUrl.includes("token="))
+  ) {
+    try {
+      const match = rawUrl.match(/food-photos\/(.+?)(?:\?|$)/);
+      if (match && match[1]) {
+        const storagePath = decodeURIComponent(match[1]);
+        const { data: signedData, error: signError } = await admin.storage
+          .from("food-photos")
+          .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+        if (!signError && signedData?.signedUrl) {
+          return signedData.signedUrl;
+        }
+      }
+    } catch {}
+  }
+
+  return rawUrl;
+}
+
 export async function GET(req: Request) {
   try {
     const supabase = createServerClient(req);
@@ -51,6 +82,24 @@ export async function GET(req: Request) {
       companion = user.user_metadata.companion;
     }
 
+    // Repair broken public storage URLs on the fly
+    if (companion?.avatar_url) {
+      const safeUrl = await resolveSafeAvatarUrl(admin, companion.avatar_url);
+      if (safeUrl && safeUrl !== companion.avatar_url) {
+        companion.avatar_url = safeUrl;
+        // Background repair in profiles table
+        admin
+          .from("profiles")
+          .update({
+            avatar_url: safeUrl,
+            companion_data: companion,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id)
+          .then(() => {});
+      }
+    }
+
     return NextResponse.json(
       { authenticated: true, companion },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
@@ -78,7 +127,7 @@ export async function POST(req: Request) {
     let finalAvatarUrl = avatar_url || null;
     const admin = createAdminClient();
 
-    // If avatar_url is a heavy base64 string, upload to Supabase storage to keep JWT & user_metadata lightweight
+    // If avatar_url is a base64 string, upload to storage and generate long-lived Signed URL
     if (avatar_url && typeof avatar_url === "string" && avatar_url.startsWith("data:image/")) {
       try {
         const base64Data = avatar_url.replace(/^data:image\/\w+;base64,/, "");
@@ -93,17 +142,23 @@ export async function POST(req: Request) {
           });
 
         if (!uploadError) {
-          const { data: publicData } = admin.storage
+          // Generate long-lived Signed URL (10 years) because food-photos is private
+          const { data: signedData, error: signError } = await admin.storage
             .from("food-photos")
-            .getPublicUrl(filePath);
+            .createSignedUrl(filePath, 60 * 60 * 24 * 365 * 10);
 
-          if (publicData?.publicUrl) {
-            finalAvatarUrl = publicData.publicUrl;
+          if (!signError && signedData?.signedUrl) {
+            finalAvatarUrl = signedData.signedUrl;
           }
         }
       } catch (uploadEx: any) {
         console.warn("[Companion Sync] Storage upload warning:", uploadEx.message);
       }
+      // If storage signed URL wasn't generated, finalAvatarUrl stays as the Base64 Data URL,
+      // which is guaranteed to render 100% of the time.
+    } else if (finalAvatarUrl) {
+      // If client sent an existing URL, ensure it's safe and signed
+      finalAvatarUrl = await resolveSafeAvatarUrl(admin, finalAvatarUrl);
     }
 
     const companionData = {
@@ -113,19 +168,23 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Update user_metadata in auth.users
-    const { error: updateError } = await admin.auth.admin.updateUserById(user.id, {
-      user_metadata: {
-        ...user.user_metadata,
-        companion: companionData,
-      },
-    });
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    // 1. Update user_metadata in auth.users (keep JWT small if avatar is heavy base64)
+    try {
+      const isBase64 = typeof finalAvatarUrl === "string" && finalAvatarUrl.startsWith("data:image/");
+      await admin.auth.admin.updateUserById(user.id, {
+        user_metadata: {
+          ...user.user_metadata,
+          companion: {
+            ...companionData,
+            avatar_url: isBase64 ? null : finalAvatarUrl,
+          },
+        },
+      });
+    } catch (metaErr: any) {
+      console.warn("[Companion Sync] user_metadata warning:", metaErr.message);
     }
 
-    // 2. Also try updating profiles table if columns exist
+    // 2. Primary cloud storage: profiles table JSONB (can easily store full base64 or signed URL)
     try {
       await admin
         .from("profiles")
@@ -135,7 +194,9 @@ export async function POST(req: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id);
-    } catch {}
+    } catch (dbErr: any) {
+      console.warn("[Companion Sync] profiles update warning:", dbErr.message);
+    }
 
     return NextResponse.json({
       success: true,

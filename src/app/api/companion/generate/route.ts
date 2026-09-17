@@ -9,6 +9,7 @@ export const revalidate = 0;
 interface CompanionCacheEntry {
   image_url: string;
   prompt_used: string;
+  model_used: string;
   generated_at: string;
   timestamp: number;
 }
@@ -17,8 +18,9 @@ const COMPANION_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const generateCompanionSchema = z.object({
   character_name: z.string().min(1, "Nama karakter wajib diisi").max(50),
-  character_description: z.string().min(1, "Deskripsi karakter wajib diisi").max(300),
+  character_description: z.string().min(1, "Deskripsi karakter wajib diisi").max(500),
   theme: z.enum(["godzilla", "ultraman"]).optional().default("godzilla"),
+  model_id: z.string().optional().default("gemini-3.8-flash"),
 });
 
 function cleanIndonesianPrompt(desc: string): string {
@@ -68,31 +70,82 @@ function cleanIndonesianPrompt(desc: string): string {
 async function buildOptimalPrompt(
   characterName: string,
   characterDescription: string,
-  theme: "godzilla" | "ultraman"
+  theme: "godzilla" | "ultraman",
+  modelId: string
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && !apiKey.includes("placeholder") && apiKey.length > 20) {
-    try {
-      const themeStyle =
-        theme === "ultraman"
-          ? "heroic sleek sci-fi ultra guardian combat mecha, futuristic silver and crimson armor, glowing chest core"
-          : "fearsome cybernetic bio-mech kaiju beast, dark tactical cyberpunk monster, glowing neon blue energy veins, titanium armor";
+  const themeStyle =
+    theme === "ultraman"
+      ? "heroic sleek sci-fi ultra guardian combat mecha, futuristic silver and crimson armor, glowing chest core"
+      : "fearsome cybernetic bio-mech kaiju beast, dark tactical cyberpunk monster, glowing neon blue energy veins, titanium armor";
 
-      const res = await gemini.models.generateContent({
-        model: PRIMARY_GEMINI_MODEL,
-        contents: `You are an AI creature concept artist. Convert this character idea into a concise 25-word English visual art prompt.
+  const systemInstruction = `You are an AI creature concept artist. Convert this character idea into a concise 25-word English visual art prompt.
 Character: "${characterName}".
 User description: "${characterDescription}".
 Required style: ${themeStyle}.
-Output ONLY the English prompt string without quotes.`,
+Output ONLY the English prompt string without quotes.`;
+
+  // 1. If OpenAI model requested and key available
+  if (modelId.startsWith("gpt") && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 20) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: systemInstruction }],
+          max_tokens: 100,
+          temperature: 0.7,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text && text.length > 10) return text;
+      }
+    } catch {}
+  }
+
+  // 2. If DeepSeek model requested and key available
+  if (modelId.startsWith("deepseek") && process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_API_KEY.length > 20) {
+    try {
+      const res = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: systemInstruction }],
+          max_tokens: 100,
+          temperature: 0.7,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text && text.length > 10) return text;
+      }
+    } catch {}
+  }
+
+  // 3. Gemini fallback or default Google model
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey && !geminiKey.includes("placeholder") && geminiKey.length > 20) {
+    try {
+      const targetModel = modelId.startsWith("gemini") ? modelId : PRIMARY_GEMINI_MODEL;
+      const res = await gemini.models.generateContent({
+        model: targetModel,
+        contents: systemInstruction,
       });
 
       if (res.text && res.text.trim().length > 10) {
         return res.text.trim();
       }
-    } catch {
-      // Fall through to dictionary translation
-    }
+    } catch {}
   }
 
   const cleanDesc = cleanIndonesianPrompt(characterDescription);
@@ -149,13 +202,49 @@ function createTacticalSvgFallback(name: string, theme: "godzilla" | "ultraman")
 async function fetchImageAsBase64(
   prompt: string,
   theme: "godzilla" | "ultraman",
-  characterName: string
+  characterName: string,
+  modelId: string
 ): Promise<string> {
+  // Option A: If OpenAI model selected and OPENAI_API_KEY is available, try DALL-E
+  if (modelId.startsWith("gpt") && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 20) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+
+      const openAiRes = await fetch("https://api.openai.com/v1/images/generations", {
+        signal: controller.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "dall-e-3",
+          prompt: prompt.substring(0, 950),
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json",
+        }),
+      });
+      clearTimeout(timeout);
+
+      if (openAiRes.ok) {
+        const aiData = await openAiRes.json();
+        const b64 = aiData?.data?.[0]?.b64_json;
+        if (b64 && b64.length > 1000) {
+          return `data:image/png;base64,${b64}`;
+        }
+      }
+    } catch (openAiErr) {
+      console.warn("[Companion AI] OpenAI image generation fallback:", openAiErr);
+    }
+  }
+
+  // Option B: Fast Neural Diffusion (Pollinations turbo)
   const seed = Math.floor(Math.random() * 1000000);
   const encoded = encodeURIComponent(prompt);
-  const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=384&height=384&nologo=true&model=turbo&seed=${seed}`;
+  const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=512&height=512&nologo=true&model=turbo&seed=${seed}`;
 
-  // Try Pollinations turbo generation
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 9000);
@@ -215,19 +304,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const { character_name, character_description, theme } = parseResult.data;
+    const { character_name, character_description, theme, model_id } = parseResult.data;
 
     // Check in-memory synthesizer cache
-    const cacheKey = `${theme}_${character_name.trim().toLowerCase()}_${character_description.trim().toLowerCase()}`;
+    const cacheKey = `${theme}_${model_id}_${character_name.trim().toLowerCase()}_${character_description.trim().toLowerCase()}`;
     const cached = companionAiCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < COMPANION_CACHE_TTL_MS)) {
+    if (cached && Date.now() - cached.timestamp < COMPANION_CACHE_TTL_MS) {
       return NextResponse.json({
         success: true,
         character_name,
         character_description,
         theme,
+        model_id,
         image_url: cached.image_url,
         prompt_used: cached.prompt_used,
+        model_used: cached.model_used,
         generated_at: cached.generated_at,
         cached: true,
       }, {
@@ -235,24 +326,27 @@ export async function POST(req: Request) {
       });
     }
 
-    // 1. Synthesize optimized prompt
+    // 1. Synthesize optimized prompt using selected model provider
     const tacticalPrompt = await buildOptimalPrompt(
       character_name,
       character_description,
-      theme
+      theme,
+      model_id
     );
 
     // 2. Fetch image on server and convert to Base64 Data URL
     const imageBase64Url = await fetchImageAsBase64(
       tacticalPrompt,
       theme,
-      character_name
+      character_name,
+      model_id
     );
 
     const generatedAt = new Date().toISOString();
     companionAiCache.set(cacheKey, {
       image_url: imageBase64Url,
       prompt_used: tacticalPrompt,
+      model_used: model_id,
       generated_at: generatedAt,
       timestamp: Date.now(),
     });
@@ -262,8 +356,10 @@ export async function POST(req: Request) {
       character_name,
       character_description,
       theme,
+      model_id,
       image_url: imageBase64Url,
       prompt_used: tacticalPrompt,
+      model_used: model_id,
       generated_at: generatedAt,
     }, {
       headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
