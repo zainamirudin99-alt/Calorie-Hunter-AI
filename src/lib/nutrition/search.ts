@@ -193,3 +193,49 @@ export function deconstructFromNutritionDb(rawText: string): { items: Deconstruc
     notes: "Estimasi cerdas dekonstruksi nutrisi (Database Terverifikasi TKPI Kemenkes RI & Global)",
   };
 }
+
+/**
+ * Searches the 10,010-item database for food items matching a search query.
+ * Used for Manual Input (Cari Nama & Input Gram) to calculate macros & micros.
+ */
+export function searchFoodItems(query: string, limit = 25): NutritionEntry[] {
+  const db = getNutritionDatabase();
+  if (!db || db.length === 0 || !query || query.trim().length === 0) return [];
+  const cleanQuery = normalize(query);
+  const queryTokens = cleanQuery.split(" ").filter(Boolean);
+
+  const scored: { item: NutritionEntry; score: number }[] = [];
+
+  for (const item of db) {
+    const cleanName = normalize(item.name);
+    let score = 0;
+
+    if (cleanName === cleanQuery) {
+      score += 150;
+    } else if (cleanName.startsWith(cleanQuery)) {
+      score += 80;
+    } else if (cleanName.includes(cleanQuery)) {
+      score += 50;
+    }
+
+    let tokenMatches = 0;
+    for (const token of queryTokens) {
+      if (cleanName.includes(token)) {
+        tokenMatches++;
+        score += token.length >= 4 ? 20 : 10;
+      }
+    }
+
+    // Must match at least one token if query has multiple words
+    if (queryTokens.length > 1 && tokenMatches === queryTokens.length) {
+      score += 40;
+    }
+
+    if (score > 0) {
+      scored.push({ item, score });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((s) => s.item);
+}

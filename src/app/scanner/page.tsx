@@ -31,12 +31,34 @@ import {
   Plus,
   Utensils,
   ScanLine,
-  RefreshCw
+  RefreshCw,
+  BookOpen,
+  Search,
+  Scale,
+  Calculator,
+  Check
 } from "lucide-react";
 
 import { ProgramType } from "@/types/database";
 import { getProgramNutrientRules, calculateMacroTargets, calculateRemainingCalories } from "@/lib/tdee/calculator";
 import { useSelectedAiModel } from "@/lib/gemini/models";
+
+export interface NutritionEntry {
+  id: string;
+  name: string;
+  category: string;
+  serving_g: number;
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  fiber: number;
+  sugar: number;
+  sodium: number;
+  potassium: number;
+  vitamin_c: number;
+  source: string;
+}
 
 interface LoggedFoodItem {
   id: string;
@@ -114,13 +136,20 @@ export default function TrackingMakananPage() {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
 
   // Input & Camera State
-  const [inputMode, setInputMode] = useState<"photo" | "manual_text">("photo");
+  const [inputMode, setInputMode] = useState<"photo" | "manual_search" | "manual_text">("photo");
   const [manualText, setManualText] = useState("");
   const [photoHint, setPhotoHint] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+
+  // Nutrition Database 10k Search State
+  const [dbSearchQuery, setDbSearchQuery] = useState("");
+  const [dbSearchResults, setDbSearchResults] = useState<NutritionEntry[]>([]);
+  const [isSearchingDb, setIsSearchingDb] = useState(false);
+  const [selectedDbItem, setSelectedDbItem] = useState<NutritionEntry | null>(null);
+  const [manualWeightG, setManualWeightG] = useState<number>(100);
 
   // Analysis & Loading
   const [loading, setLoading] = useState(false);
@@ -366,6 +395,82 @@ export default function TrackingMakananPage() {
     }
   ];
 
+  // Debounced search for 10,010-item offline nutrition database
+  useEffect(() => {
+    if (!dbSearchQuery || !dbSearchQuery.trim()) {
+      setDbSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingDb(true);
+      try {
+        const res = await fetch(`/api/nutrition/search?q=${encodeURIComponent(dbSearchQuery.trim())}&limit=25`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.items)) {
+            setDbSearchResults(data.items);
+          }
+        }
+      } catch (err) {
+        console.warn("[scanner] Nutrition DB search error:", err);
+      } finally {
+        setIsSearchingDb(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [dbSearchQuery]);
+
+  // Dynamic calculations for selected manual food item
+  const calcRatio = (Number(manualWeightG) || 100) / 100;
+  const calcCalories = selectedDbItem ? Math.round((selectedDbItem.calories || 0) * calcRatio) : 0;
+  const calcCarbs = selectedDbItem ? Number(((selectedDbItem.carbs || 0) * calcRatio).toFixed(1)) : 0;
+  const calcProtein = selectedDbItem ? Number(((selectedDbItem.protein || 0) * calcRatio).toFixed(1)) : 0;
+  const calcFat = selectedDbItem ? Number(((selectedDbItem.fat || 0) * calcRatio).toFixed(1)) : 0;
+  const calcFiber = selectedDbItem ? Number(((selectedDbItem.fiber || 0) * calcRatio).toFixed(1)) : 0;
+  const calcSugar = selectedDbItem ? Number(((selectedDbItem.sugar || 0) * calcRatio).toFixed(1)) : 0;
+  const calcSodium = selectedDbItem ? Math.round((selectedDbItem.sodium || 0) * calcRatio) : 0;
+  const calcPotassium = selectedDbItem ? Math.round((selectedDbItem.potassium || 0) * calcRatio) : 0;
+  const calcVitC = selectedDbItem ? Math.round((selectedDbItem.vitamin_c || 0) * calcRatio) : 0;
+
+  const handleSelectDbItem = (item: NutritionEntry) => {
+    setSelectedDbItem(item);
+    setManualWeightG(100);
+  };
+
+  const handleAddManualItem = () => {
+    if (!selectedDbItem) return;
+    const finalWeight = Math.max(1, Number(manualWeightG) || 100);
+    const finalRatio = finalWeight / 100;
+
+    const newItem = {
+      food_name: selectedDbItem.name,
+      estimated_weight_g: finalWeight,
+      calories_kcal: Math.round((selectedDbItem.calories || 0) * finalRatio),
+      macros: {
+        carbs_g: Number(((selectedDbItem.carbs || 0) * finalRatio).toFixed(1)),
+        protein_g: Number(((selectedDbItem.protein || 0) * finalRatio).toFixed(1)),
+        fat_g: Number(((selectedDbItem.fat || 0) * finalRatio).toFixed(1)),
+        fiber_g: Number(((selectedDbItem.fiber || 0) * finalRatio).toFixed(1)),
+        sugar_g: Number(((selectedDbItem.sugar || 0) * finalRatio).toFixed(1)),
+      },
+      micros: {
+        sodium_mg: Math.round((selectedDbItem.sodium || 0) * finalRatio),
+        potassium_mg: Math.round((selectedDbItem.potassium || 0) * finalRatio),
+        vitamin_c_mg: Math.round((selectedDbItem.vitamin_c || 0) * finalRatio),
+      },
+    };
+
+    setEditablePreviewItems((prev) => [...prev, newItem]);
+    setActionFeedback({
+      type: "success",
+      msg: `Berhasil menambahkan "${selectedDbItem.name}" (${finalWeight}g • ${newItem.calories_kcal} kcal) ke pratinjau ransum!`,
+    });
+    setSelectedDbItem(null);
+    setDbSearchQuery("");
+  };
+
   // File selection with automatic client-side canvas compression & format sanitization
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setErrorMsg(null);
@@ -503,14 +608,6 @@ export default function TrackingMakananPage() {
 
       setAnalysisResult(data);
       setEditablePreviewItems(formattedItems);
-
-      if (data.is_fallback) {
-        setActionFeedback({
-          type: "warning",
-          msg: "ESTIMASI CERDAS TAKTIS DIAKTIFKAN — Menggunakan dekonstruksi gizi lokal (10.010+ data pangan terverifikasi) karena server AI sedang padat/cooldown. Silakan sesuaikan takaran sebelum disimpan.",
-        });
-      }
-
     } catch (err: any) {
       setErrorMsg(err.message || "Gagal memproses analisis sensor AI");
     } finally {
@@ -1004,27 +1101,39 @@ export default function TrackingMakananPage() {
                 </div>
               </div>
 
-              {/* Mode Switcher */}
-              <div className="grid grid-cols-2 gap-2 p-1 rounded hud-card-inner border hud-border mb-4">
+              {/* Mode Switcher: 3 Modes (PINDAI FOTO AI, KAMUS GIZI 10K, TEKS AI) */}
+              <div className="grid grid-cols-3 gap-1.5 p-1 rounded hud-card-inner border hud-border mb-4">
                 <button
                   type="button"
-                  onClick={() => { setInputMode("photo"); setManualText(""); }}
-                  className={`py-2 text-xs font-mono font-bold uppercase transition-all flex items-center justify-center gap-2 rounded ${
-                    inputMode === "photo" ? "hud-hero-bg shadow" : "hud-text-muted hover:hud-text"
+                  onClick={() => { setInputMode("photo"); setManualText(""); setSelectedDbItem(null); }}
+                  className={`py-2 px-1 text-[11px] font-mono font-bold uppercase transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 rounded text-center cursor-pointer ${
+                    inputMode === "photo" ? "hud-hero-bg shadow font-bold text-black dark:text-black" : "hud-text-muted hover:hud-text"
                   }`}
                 >
-                  <Camera className="w-4 h-4" />
-                  <span>PINDAI FOTO</span>
+                  <Camera className="w-3.5 h-3.5 shrink-0" />
+                  <span>FOTO (AI)</span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => { setInputMode("manual_text"); setSelectedFile(null); setPreviewUrl(null); }}
-                  className={`py-2 text-xs font-mono font-bold uppercase transition-all flex items-center justify-center gap-2 rounded ${
-                    inputMode === "manual_text" ? "hud-hero-bg shadow" : "hud-text-muted hover:hud-text"
+                  onClick={() => { setInputMode("manual_search"); setSelectedFile(null); setPreviewUrl(null); setManualText(""); }}
+                  className={`py-2 px-1 text-[11px] font-mono font-bold uppercase transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 rounded text-center cursor-pointer ${
+                    inputMode === "manual_search" ? "hud-hero-bg shadow font-bold text-black dark:text-black" : "hud-text-muted hover:hud-text"
                   }`}
                 >
-                  <Type className="w-4 h-4" />
-                  <span>TEKS MANUAL</span>
+                  <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                  <span>KAMUS GIZI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setInputMode("manual_text"); setSelectedFile(null); setPreviewUrl(null); setSelectedDbItem(null); }}
+                  className={`py-2 px-1 text-[11px] font-mono font-bold uppercase transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 rounded text-center cursor-pointer ${
+                    inputMode === "manual_text" ? "hud-hero-bg shadow font-bold text-black dark:text-black" : "hud-text-muted hover:hud-text"
+                  }`}
+                >
+                  <Type className="w-3.5 h-3.5 shrink-0" />
+                  <span>TEKS (AI)</span>
                 </button>
               </div>
 
@@ -1114,7 +1223,7 @@ export default function TrackingMakananPage() {
                     </div>
                   )}
 
-                    {previewUrl && (
+                  {previewUrl && (
                     <div className="space-y-2 p-3 rounded hud-card-inner border hud-border text-left">
                       <label className="text-[11px] font-mono hud-hero-text font-bold uppercase flex items-center gap-1.5">
                         <Type className="w-3.5 h-3.5" />
@@ -1130,6 +1239,197 @@ export default function TrackingMakananPage() {
                       <span className="text-[10px] text-outline block">
                         Opsional: Tuliskan catatan menu untuk membantu sensor AI mendeteksi dengan presisi tinggi.
                       </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Manual Search in 10,010-Item Nutrition Database */}
+              {inputMode === "manual_search" && (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block font-mono text-xs hud-hero-text font-bold uppercase flex items-center gap-1.5">
+                      <Search className="w-3.5 h-3.5" />
+                      <span>Cari Nama Makanan (10.010+ Database Terverifikasi):</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={dbSearchQuery}
+                        onChange={(e) => setDbSearchQuery(e.target.value)}
+                        placeholder="Ketik nama makanan (cth: dada ayam, telur, tempe, nasi padang, alpukat...)"
+                        className="w-full px-3.5 py-2.5 pl-9 rounded hud-card-inner border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary"
+                      />
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      {isSearchingDb && (
+                        <div className="absolute right-3 top-3 w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Search Results Dropdown List */}
+                  {dbSearchResults.length > 0 && !selectedDbItem && (
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1 border hud-border rounded p-2 hud-card-inner">
+                      <div className="text-[10px] font-mono text-outline uppercase px-1 pb-1 border-b hud-border flex justify-between">
+                        <span>Hasil Pencarian ({dbSearchResults.length} item)</span>
+                        <span>Klik untuk pilih</span>
+                      </div>
+                      {dbSearchResults.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectDbItem(item)}
+                          className="w-full text-left p-2 rounded hud-card hover:border-primary/60 border hud-border transition-all flex items-center justify-between gap-2 group cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-bold hud-text group-hover:hud-hero-text truncate">
+                                {item.name}
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded hud-card-high border hud-border text-outline">
+                                {item.category}
+                              </span>
+                            </div>
+                            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                              Per 100g: <span className="hud-hero-text font-bold">{item.calories} kcal</span> • P: {item.protein}g • C: {item.carbs}g • F: {item.fat}g
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-[10px] font-mono px-2 py-1 rounded hud-hero-bg text-black font-bold uppercase opacity-90 group-hover:opacity-100">
+                            PILIH
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Selected Item & Weight Input with Live Calculation */}
+                  {selectedDbItem && (
+                    <div className="p-4 rounded hud-card-inner border-2 border-primary/60 space-y-4 bg-primary/5">
+                      <div className="flex items-start justify-between gap-2 border-b hud-border pb-2.5">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-sm font-bold hud-hero-text">
+                              {selectedDbItem.name}
+                            </span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border hud-border bg-black/40 text-cyan-300 font-bold">
+                              {selectedDbItem.category}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono text-outline block mt-0.5">
+                            Sumber Data: {selectedDbItem.source} • Nilai dasar per 100 gram
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDbItem(null)}
+                          className="text-slate-400 hover:text-white p-1"
+                          title="Ganti Pilihan Makanan"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Weight Input & Presets */}
+                      <div className="space-y-2 font-mono">
+                        <label className="text-xs hud-text font-bold uppercase flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <Scale className="w-4 h-4 text-cyan-400" />
+                            <span>Masukkan Berat Ransum (Gram):</span>
+                          </span>
+                          <span className="text-[11px] hud-beam-text">{manualWeightG} gram</span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={5000}
+                            value={manualWeightG}
+                            onChange={(e) => setManualWeightG(Math.max(1, Number(e.target.value) || 1))}
+                            className="flex-1 px-3 py-2 rounded hud-card border hud-border font-mono text-sm font-bold hud-text text-center focus:outline-none focus:border-primary"
+                          />
+                          <span className="font-mono text-xs text-outline">gram</span>
+                        </div>
+
+                        {/* Quick Gram Chips */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          <span className="text-[10px] text-outline mr-1">Preset Cepat:</span>
+                          {[50, 100, 150, 200, 250, 300].map((gram) => (
+                            <button
+                              key={gram}
+                              type="button"
+                              onClick={() => setManualWeightG(gram)}
+                              className={`px-2 py-0.5 rounded font-mono text-[10px] border transition-all ${
+                                manualWeightG === gram
+                                  ? "hud-hero-bg text-black font-bold border-primary"
+                                  : "hud-card border-hud-border text-slate-300 hover:border-primary/50"
+                              }`}
+                            >
+                              {gram}g
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Live Auto-Calculated Nutrition Display */}
+                      <div className="p-3 rounded hud-card border hud-border space-y-2.5 font-mono">
+                        <div className="flex items-center justify-between border-b hud-border pb-2">
+                          <span className="text-[11px] uppercase text-outline flex items-center gap-1">
+                            <Calculator className="w-3.5 h-3.5 text-amber-400" />
+                            <span>HASIL KALKULASI OTOMATIS ({manualWeightG}g):</span>
+                          </span>
+                          <span className="font-display text-base sm:text-lg font-bold hud-hero-text">
+                            {calcCalories} kcal
+                          </span>
+                        </div>
+
+                        {/* 4 Macros */}
+                        <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                          <div className="p-1.5 rounded hud-card-inner border hud-border">
+                            <span className="text-[9px] text-outline block uppercase">Karbo</span>
+                            <span className="font-bold hud-sub-text">{calcCarbs}g</span>
+                          </div>
+                          <div className="p-1.5 rounded hud-card-inner border hud-border">
+                            <span className="text-[9px] text-outline block uppercase">Protein</span>
+                            <span className="font-bold hud-beam-text">{calcProtein}g</span>
+                          </div>
+                          <div className="p-1.5 rounded hud-card-inner border hud-border">
+                            <span className="text-[9px] text-outline block uppercase">Lemak</span>
+                            <span className="font-bold hud-hero-text">{calcFat}g</span>
+                          </div>
+                          <div className="p-1.5 rounded hud-card-inner border hud-border">
+                            <span className="text-[9px] text-outline block uppercase">Serat</span>
+                            <span className="font-bold hud-text">{calcFiber}g</span>
+                          </div>
+                        </div>
+
+                        {/* Micros */}
+                        <div className="flex items-center justify-between text-[10px] text-slate-300 pt-1 border-t hud-border px-1">
+                          <span>Natrium: <strong className="text-white">{calcSodium}mg</strong></span>
+                          <span>Kalium: <strong className="text-white">{calcPotassium}mg</strong></span>
+                          <span>Vit C: <strong className="text-white">{calcVitC}mg</strong></span>
+                        </div>
+                      </div>
+
+                      {/* Action Button: Add to preview list */}
+                      <button
+                        type="button"
+                        onClick={handleAddManualItem}
+                        className="w-full hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 text-black dark:text-black cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>MASUKKAN KE PRATINJAU RANSUM</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Empty state prompt if nothing searched yet */}
+                  {!selectedDbItem && dbSearchResults.length === 0 && (
+                    <div className="p-4 rounded hud-card-inner border hud-border text-center font-mono text-xs text-outline space-y-1">
+                      <BookOpen className="w-6 h-6 mx-auto text-primary/70 mb-1" />
+                      <span className="block text-slate-300 font-bold">Pencarian Kamus Gizi Terverifikasi</span>
+                      <p className="text-[11px] text-outline max-w-sm mx-auto">
+                        Ketik nama makanan di atas untuk mencari dari 10.010+ data pangan resmi (TKPI Kemenkes RI & USDA). Masukkan takaran gram dan makro/mikro akan otomatis terhitung.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1154,22 +1454,24 @@ export default function TrackingMakananPage() {
                 </div>
               )}
 
-              {/* Submit Process Button */}
-              <button
-                type="button"
-                onClick={handleProcessAI}
-                disabled={!canProcess || loading}
-                className="w-full hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-40 mt-4 cursor-pointer"
-              >
-                {loading ? (
-                  <span>MEMPROSES SENSOR AI GIZI...</span>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4" />
-                    <span>ANALISIS RANSUM DENGAN AI</span>
-                  </>
-                )}
-              </button>
+              {/* Submit AI Process Button (Only shown in Photo or Text AI mode) */}
+              {inputMode !== "manual_search" && (
+                <button
+                  type="button"
+                  onClick={handleProcessAI}
+                  disabled={!canProcess || loading}
+                  className="w-full hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-40 mt-4 cursor-pointer text-black dark:text-black"
+                >
+                  {loading ? (
+                    <span>MEMPROSES SENSOR AI GIZI...</span>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      <span>ANALISIS RANSUM DENGAN AI</span>
+                    </>
+                  )}
+                </button>
+              )}
 
               {/* Optimistic Non-blocking Processing Indicator */}
               {loading && (

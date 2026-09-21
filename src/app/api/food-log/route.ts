@@ -578,8 +578,12 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
     };
 
     // Runner 3: Google Gemini (supports vision + text with model cascade)
+    let lastAiError: string | null = null;
     const runGemini = async () => {
-      if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "placeholder-gemini-key") return null;
+      if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "placeholder-gemini-key") {
+        lastAiError = "Kunci GEMINI_API_KEY belum dikonfigurasi di Environment Variable server.";
+        return null;
+      }
       const contents: any[] = [];
       if (base64Image) {
         contents.push({
@@ -594,9 +598,9 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
       const officialModel = resolveOfficialGeminiModel(effectiveModel);
       const candidateModels = [
         officialModel,
-        "gemini-2.5-flash",
         "gemini-2.0-flash",
         "gemini-1.5-flash",
+        "gemini-1.5-pro",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentCandidate of candidateModels) {
@@ -606,7 +610,6 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
             contents,
             config: {
               responseMimeType: "application/json",
-              responseSchema: foodScanGeminiSchema,
               temperature: 0.2,
               maxOutputTokens: 2048,
             },
@@ -620,6 +623,7 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
             }
           }
         } catch (err: any) {
+          lastAiError = err.message || `Error pada model ${currentCandidate}`;
           console.warn(`[Gemini FoodScan] Model ${currentCandidate} failed:`, err.message);
         }
       }
@@ -668,7 +672,7 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
       } else {
         // AUTOMATIC FAILOVER: If Gemini quota is exceeded (429) or overloaded, use OpenAI or DeepSeek from Vercel!
         if (process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
-          console.info("[FoodScan] Gemini quota reached or error encountered. Automatically failing over to OpenAI...");
+          console.info("[FoodScan] Gemini unavailable. Automatically failing over to OpenAI...");
           aiResult = await runOpenAi("gpt-4o");
           if (aiResult) modelUsed = "gpt-4o (Failover)";
         }
@@ -680,21 +684,28 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
       }
     }
 
-    // High-Precision Offline Heuristic Fallback using 10,010-item verified nutrition database
+    // STRICT AI POLICY FOR PHOTO SCANS:
+    // If the user uploaded a photo, do NOT return a fake generic meal (e.g. Nasi Putih + Ayam).
+    // The user expects actual AI vision analysis. If AI fails, return an honest error so they can retry or use manual search.
+    if (photoFile && (!aiResult || !aiResult.items || aiResult.items.length === 0)) {
+      return NextResponse.json(
+        {
+          error: `Gagal memproses analisis foto dengan AI: ${lastAiError || "Layanan AI sedang sibuk atau kuota terlampaui"}. Silakan coba bidik ulang foto, atau gunakan tab 'Kamus Gizi' untuk mencari makanan secara manual.`,
+        },
+        { status: 502 }
+      );
+    }
+
+    // For manual text input only: if AI fails, deconstruct from 10,010-item verified nutrition database
     if (!aiResult || !aiResult.items || aiResult.items.length === 0) {
       isFallback = true;
       if (manualText && manualText.trim().length > 0) {
         aiResult = deconstructFromNutritionDb(manualText.trim());
       } else {
-        aiResult = {
-          items: [
-            { food_name: "Nasi Putih Porsi Sedang", estimated_weight_g: 150, calories_kcal: 195, macros: { carbs_g: 42, protein_g: 4, fat_g: 0.4, fiber_g: 0.6, sugar: 0 }, micros: { sodium_mg: 5, potassium_mg: 50, vitamin_c_mg: 0 }, confidence: 0.88 },
-            { food_name: "Lauk Protein (Ayam / Daging / Ikan)", estimated_weight_g: 120, calories_kcal: 240, macros: { carbs_g: 2, protein_g: 28, fat_g: 12, fiber_g: 0.5, sugar: 0.5 }, micros: { sodium_mg: 350, potassium_mg: 300, vitamin_c_mg: 2 }, confidence: 0.85 },
-            { food_name: "Sayuran / Tumisan Seimbang", estimated_weight_g: 80, calories_kcal: 65, macros: { carbs_g: 6, protein_g: 2.5, fat_g: 3.5, fiber_g: 2.5, sugar: 1.5 }, micros: { sodium_mg: 210, potassium_mg: 220, vitamin_c_mg: 16 }, confidence: 0.85 },
-          ],
-          total_calories_kcal: 500,
-          notes: photoFile ? "Pindai visual hidangan (Estimasi Cerdas Database 10.000+ Pangan)" : "Estimasi menu seimbang taktis",
-        };
+        return NextResponse.json(
+          { error: "Deskripsi menu makanan tidak dapat dianalisis. Silakan masukkan nama makanan yang lebih jelas." },
+          { status: 400 }
+        );
       }
     }
 
