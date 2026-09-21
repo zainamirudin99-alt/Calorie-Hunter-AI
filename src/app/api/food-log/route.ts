@@ -375,7 +375,17 @@ export async function POST(req: Request) {
     const action = (formData.get("action") as string | null) || "analyze";
     const formModel = (formData.get("model") as string | null)?.trim();
     const headerModel = req.headers.get("x-ai-model")?.trim();
-    const effectiveModel = formModel || headerModel || selectedModel || PRIMARY_GEMINI_MODEL;
+    let effectiveModel = formModel || headerModel || selectedModel || PRIMARY_GEMINI_MODEL;
+
+    // Strictly sanitize away any legacy model identifiers (1.5, 2.0, 2.5) to active 2026 models
+    const lowerEffective = effectiveModel.toLowerCase();
+    if (lowerEffective.includes("1.5") || lowerEffective.includes("2.0") || lowerEffective.includes("2.5")) {
+      if (lowerEffective.includes("pro") || lowerEffective.includes("3.1")) {
+        effectiveModel = "gemini-3.1-pro-preview";
+      } else {
+        effectiveModel = PRIMARY_GEMINI_MODEL;
+      }
+    }
 
     // Per-client rate limit for AI inference (60 requests / minute)
     const rawIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "client-local";
@@ -495,84 +505,107 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
     // -------------------------------------------------------------------------
 
     // Runner 1: OpenAI (supports vision + text)
-    const runOpenAi = async (modelToUse = "gpt-4o") => {
+    // Runner 1: OpenAI (supports vision + text)
+    const runOpenAi = async (modelToUse?: string) => {
       if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes("placeholder")) return null;
-      try {
-        const userContent: any[] = [
-          {
-            type: "text",
-            text: `${promptText}\nOutput strictly valid JSON with format: {"items":[{"food_name":"...","estimated_weight_g":100,"calories_kcal":200,"macros":{"carbs_g":20,"protein_g":15,"fat_g":5,"fiber_g":2,"sugar_g":1},"micros":{"sodium_mg":150,"potassium_mg":150,"vitamin_c_mg":5},"confidence":0.9}],"total_calories_kcal":200}`,
-          },
-        ];
-        if (base64Image) {
-          userContent.push({
-            type: "image_url",
-            image_url: { url: `data:${imageMimeType};base64,${base64Image}` },
-          });
-        }
+      const oaiModels = [
+        modelToUse,
+        effectiveModel.startsWith("gpt-") ? effectiveModel : null,
+        "gpt-5.6-luna",
+        "gpt-5-thinking-mini",
+        "gpt-4o",
+        "gpt-4o-mini",
+      ].filter(Boolean) as string[];
 
-        const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: modelToUse,
-            messages: [{ role: "user", content: userContent }],
-            response_format: { type: "json_object" },
-            temperature: 0.2,
-            max_tokens: 2048,
-          }),
+      const userContent: any[] = [
+        {
+          type: "text",
+          text: `${promptText}\nOutput strictly valid JSON with format: {"items":[{"food_name":"...","estimated_weight_g":100,"calories_kcal":200,"macros":{"carbs_g":20,"protein_g":15,"fat_g":5,"fiber_g":2,"sugar_g":1},"micros":{"sodium_mg":150,"potassium_mg":150,"vitamin_c_mg":5},"confidence":0.9}],"total_calories_kcal":200}`,
+        },
+      ];
+      if (base64Image) {
+        userContent.push({
+          type: "image_url",
+          image_url: { url: `data:${imageMimeType};base64,${base64Image}` },
         });
+      }
 
-        if (oaiRes.ok) {
-          const oaiData = await oaiRes.json();
-          const rawContent = oaiData.choices?.[0]?.message?.content || "";
-          const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
-          if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-            return parsed;
+      for (const currentOaiModel of oaiModels) {
+        try {
+          const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: currentOaiModel,
+              messages: [{ role: "user", content: userContent }],
+              response_format: { type: "json_object" },
+              temperature: 0.2,
+              max_tokens: 2048,
+            }),
+          });
+
+          if (oaiRes.ok) {
+            const oaiData = await oaiRes.json();
+            const rawContent = oaiData.choices?.[0]?.message?.content || "";
+            const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
+            if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+              return { result: parsed, candidate: currentOaiModel };
+            }
+          } else {
+            const errData = await oaiRes.json().catch(() => ({}));
+            console.warn(`[OpenAI FoodScan] Model ${currentOaiModel} response not ok:`, errData);
           }
-        } else {
-          const errData = await oaiRes.json().catch(() => ({}));
-          console.warn("[OpenAI FoodScan] Response not ok:", errData);
+        } catch (oaiErr: any) {
+          console.warn(`[OpenAI FoodScan] Error on ${currentOaiModel}:`, oaiErr.message);
         }
-      } catch (oaiErr: any) {
-        console.warn(`[OpenAI FoodScan] Error:`, oaiErr.message);
       }
       return null;
     };
 
     // Runner 2: DeepSeek (supports text inference)
-    const runDeepSeek = async (modelToUse = "deepseek-chat") => {
+    const runDeepSeek = async (modelToUse?: string) => {
       if (!process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY.includes("placeholder")) return null;
-      try {
-        const dsPrompt = `${promptText}\nOutput strictly valid JSON with format: {"items":[{"food_name":"...","estimated_weight_g":100,"calories_kcal":200,"macros":{"carbs_g":20,"protein_g":15,"fat_g":5,"fiber_g":2,"sugar_g":1},"micros":{"sodium_mg":150,"potassium_mg":150,"vitamin_c_mg":5},"confidence":0.9}],"total_calories_kcal":200}`;
-        const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: modelToUse,
-            messages: [{ role: "user", content: dsPrompt }],
-            response_format: { type: "json_object" },
-            temperature: 0.2,
-            max_tokens: 2048,
-          }),
-        });
+      const dsModels = [
+        modelToUse,
+        effectiveModel.startsWith("deepseek-") ? effectiveModel : null,
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "deepseek-chat",
+      ].filter(Boolean) as string[];
 
-        if (dsRes.ok) {
-          const dsData = await dsRes.json();
-          const rawContent = dsData.choices?.[0]?.message?.content || "";
-          const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
-          if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-            return parsed;
+      const dsPrompt = `${promptText}\nOutput strictly valid JSON with format: {"items":[{"food_name":"...","estimated_weight_g":100,"calories_kcal":200,"macros":{"carbs_g":20,"protein_g":15,"fat_g":5,"fiber_g":2,"sugar_g":1},"micros":{"sodium_mg":150,"potassium_mg":150,"vitamin_c_mg":5},"confidence":0.9}],"total_calories_kcal":200}`;
+
+      for (const currentDsModel of dsModels) {
+        try {
+          const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: currentDsModel,
+              messages: [{ role: "user", content: dsPrompt }],
+              response_format: { type: "json_object" },
+              temperature: 0.2,
+              max_tokens: 2048,
+            }),
+          });
+
+          if (dsRes.ok) {
+            const dsData = await dsRes.json();
+            const rawContent = dsData.choices?.[0]?.message?.content || "";
+            const parsed = cleanAiJsonResponse(rawContent) || JSON.parse(rawContent || "{}");
+            if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+              return { result: parsed, candidate: currentDsModel };
+            }
           }
+        } catch (dsErr: any) {
+          console.warn(`[DeepSeek FoodScan] Error on ${currentDsModel}:`, dsErr.message);
         }
-      } catch (dsErr: any) {
-        console.warn(`[DeepSeek FoodScan] Error:`, dsErr.message);
       }
       return null;
     };
@@ -598,9 +631,10 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
       const officialModel = resolveOfficialGeminiModel(effectiveModel);
       const candidateModels = [
         officialModel,
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.1-pro-preview",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentCandidate of candidateModels) {
@@ -632,9 +666,10 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
 
     // Execute based on active model preference with automatic cascade to all available keys in Vercel
     if (effectiveModel.startsWith("gpt-")) {
-      aiResult = await runOpenAi(effectiveModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o");
-      if (aiResult) {
-        modelUsed = effectiveModel;
+      const oaiRes = await runOpenAi(effectiveModel);
+      if (oaiRes) {
+        aiResult = oaiRes.result;
+        modelUsed = oaiRes.candidate;
       } else {
         // Failover 1: Gemini
         const gemRes = await runGemini();
@@ -643,14 +678,18 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
           modelUsed = gemRes.candidate;
         } else {
           // Failover 2: DeepSeek
-          aiResult = await runDeepSeek();
-          if (aiResult) modelUsed = "deepseek-chat";
+          const dsRes = await runDeepSeek();
+          if (dsRes) {
+            aiResult = dsRes.result;
+            modelUsed = dsRes.candidate;
+          }
         }
       }
     } else if (effectiveModel.startsWith("deepseek-")) {
-      aiResult = await runDeepSeek(effectiveModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat");
-      if (aiResult) {
-        modelUsed = effectiveModel;
+      const dsRes = await runDeepSeek(effectiveModel);
+      if (dsRes) {
+        aiResult = dsRes.result;
+        modelUsed = dsRes.candidate;
       } else {
         // Failover 1: Gemini
         const gemRes = await runGemini();
@@ -659,8 +698,11 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
           modelUsed = gemRes.candidate;
         } else {
           // Failover 2: OpenAI
-          aiResult = await runOpenAi("gpt-4o");
-          if (aiResult) modelUsed = "gpt-4o";
+          const oaiRes = await runOpenAi();
+          if (oaiRes) {
+            aiResult = oaiRes.result;
+            modelUsed = oaiRes.candidate;
+          }
         }
       }
     } else {
@@ -673,13 +715,19 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
         // AUTOMATIC FAILOVER: If Gemini quota is exceeded (429) or overloaded, use OpenAI or DeepSeek from Vercel!
         if (process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
           console.info("[FoodScan] Gemini unavailable. Automatically failing over to OpenAI...");
-          aiResult = await runOpenAi("gpt-4o");
-          if (aiResult) modelUsed = "gpt-4o (Failover)";
+          const oaiRes = await runOpenAi();
+          if (oaiRes) {
+            aiResult = oaiRes.result;
+            modelUsed = `${oaiRes.candidate} (Failover)`;
+          }
         }
         if (!aiResult && process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")) {
           console.info("[FoodScan] Automatically failing over to DeepSeek...");
-          aiResult = await runDeepSeek("deepseek-chat");
-          if (aiResult) modelUsed = "deepseek-chat (Failover)";
+          const dsRes = await runDeepSeek();
+          if (dsRes) {
+            aiResult = dsRes.result;
+            modelUsed = `${dsRes.candidate} (Failover)`;
+          }
         }
       }
     }

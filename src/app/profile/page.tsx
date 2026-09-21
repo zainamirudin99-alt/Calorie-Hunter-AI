@@ -29,7 +29,7 @@ import {
   AlertTriangle,
   ShieldAlert
 } from "lucide-react";
-import { GEMINI_MODELS, getGeminiModelById, DEFAULT_MODEL_ID } from "@/lib/gemini/models";
+import { GEMINI_MODELS, getGeminiModelById, DEFAULT_MODEL_ID, sanitizeModelId } from "@/lib/gemini/models";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -161,8 +161,8 @@ export default function ProfilePage() {
   // Load profile, activities & model on mount
   useEffect(() => {
     const savedModel = localStorage.getItem("chai_ai_model");
-    if (savedModel && GEMINI_MODELS.some(m => m.id === savedModel)) {
-      setSelectedModel(savedModel);
+    if (savedModel) {
+      setSelectedModel(sanitizeModelId(savedModel));
     }
 
     // 1. Restore from localStorage if available
@@ -181,6 +181,66 @@ export default function ProfilePage() {
         }
       } catch {}
     }
+
+    // 2. Fetch fresh profile & activities from Supabase API
+    const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+    Promise.all([
+      fetch("/api/profile", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
+      fetch("/api/activities", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
+    ])
+      .then(async ([profRes, actRes]) => {
+        if (profRes.ok) {
+          const data = await profRes.json();
+          if (data.profile) {
+            if (data.profile.full_name) setFullName(data.profile.full_name);
+            if (data.profile.gender) setGender(data.profile.gender);
+            if (data.profile.age) setAge(Number(data.profile.age));
+            if (data.profile.height_cm) setHeightCm(Number(data.profile.height_cm));
+            if (data.profile.weight_kg) setWeightKg(Number(data.profile.weight_kg));
+            if (data.profile.activity_level) setActivityLevel(data.profile.activity_level);
+          }
+          if (data.preferred_gemini_model) {
+            const clean = sanitizeModelId(data.preferred_gemini_model);
+            setSelectedModel(clean);
+            localStorage.setItem("chai_ai_model", clean);
+          }
+        }
+
+        if (actRes.ok) {
+          const actData = await actRes.json();
+          if (Array.isArray(actData.activities) && actData.activities.length > 0) {
+            const serverActs = actData.activities.map((a: any) => ({
+              id: a.id || `act-${Math.random()}`,
+              activity_name: a.activity_name,
+              frequency_per_week: Number(a.frequency_per_week) || 3,
+              duration_minutes: Number(a.duration_minutes) || 30,
+              intensity: a.intensity || "moderate",
+              checked: true,
+            }));
+            setActivities(prev => {
+              const names = new Set(serverActs.map((s: any) => s.activity_name.toLowerCase()));
+              const remaining = prev.filter(p => !names.has(p.activity_name.toLowerCase())).map(p => ({ ...p, checked: false }));
+              return [...serverActs, ...remaining];
+            });
+          }
+        }
+      })
+      .catch(() => {});
+
+    checkAiHealth();
+
+    const handleGlobalSync = () => {
+      syncServerData(false);
+    };
+
+    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    return () => {
+      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
+    };
   }, []);
 
   // Sync profile and activities with server
@@ -206,7 +266,7 @@ export default function ProfilePage() {
           if (data.profile.activity_level) setActivityLevel(data.profile.activity_level);
         }
         if (data.preferred_gemini_model) {
-          setSelectedModel(data.preferred_gemini_model);
+          setSelectedModel(sanitizeModelId(data.preferred_gemini_model));
         }
       }
 

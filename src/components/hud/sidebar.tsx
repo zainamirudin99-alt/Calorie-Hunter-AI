@@ -31,7 +31,7 @@ interface TacticalSidebarProps {
   onClose?: () => void;
 }
 
-import { GEMINI_MODELS, DEFAULT_MODEL_ID } from "@/lib/gemini/models";
+import { GEMINI_MODELS, DEFAULT_MODEL_ID, sanitizeModelId } from "@/lib/gemini/models";
 
 export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: TacticalSidebarProps = {}) {
   const pathname = usePathname();
@@ -66,8 +66,8 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
   useEffect(() => {
     // Read model preference from cookie or localStorage
     const savedModel = localStorage.getItem("chai_ai_model");
-    if (savedModel && GEMINI_MODELS.some(m => m.id === savedModel)) {
-      setSelectedModel(savedModel);
+    if (savedModel) {
+      setSelectedModel(sanitizeModelId(savedModel));
     }
 
     // Check if user is admin
@@ -81,7 +81,9 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
           setIsAdmin(true);
         }
         if (data.preferred_gemini_model) {
-          setSelectedModel(data.preferred_gemini_model);
+          const clean = sanitizeModelId(data.preferred_gemini_model);
+          setSelectedModel(clean);
+          localStorage.setItem("chai_ai_model", clean);
         }
       })
       .catch(() => {});

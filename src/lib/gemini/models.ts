@@ -96,8 +96,26 @@ export const GEMINI_MODELS: GeminiModelInfo[] = [
 
 export const DEFAULT_MODEL_ID = "gemini-3.8-flash";
 
+export function sanitizeModelId(raw?: string | null): string {
+  if (!raw || typeof raw !== "string") return DEFAULT_MODEL_ID;
+  const match = GEMINI_MODELS.find((m) => m.id === raw);
+  if (match) return match.id;
+  const lower = raw.toLowerCase().trim();
+  if (lower.includes("3.8")) return "gemini-3.8-flash";
+  if (lower.includes("3.7")) return "gemini-3.7-flash";
+  if (lower.includes("3.6")) return "gemini-3.6-flash";
+  if (lower.includes("3.1") || lower.includes("pro")) return "gemini-3.1-pro-preview";
+  if (lower.includes("flash")) return "gemini-3.8-flash";
+  if (lower.includes("luna") || lower.includes("gpt-5.6")) return "gpt-5.6-luna";
+  if (lower.includes("gpt-5") || lower.includes("thinking") || lower.includes("o3") || lower.includes("o1")) return "gpt-5-thinking-mini";
+  if (lower.includes("deepseek-v4-pro") || lower.includes("reasoner")) return "deepseek-v4-pro";
+  if (lower.includes("deepseek")) return "deepseek-v4-flash";
+  return DEFAULT_MODEL_ID;
+}
+
 export function getGeminiModelById(id: string): GeminiModelInfo {
-  const found = GEMINI_MODELS.find((m) => m.id === id);
+  const cleanId = sanitizeModelId(id);
+  const found = GEMINI_MODELS.find((m) => m.id === cleanId);
   return found || GEMINI_MODELS[0];
 }
 
@@ -108,22 +126,28 @@ export function getGeminiModelById(id: string): GeminiModelInfo {
 export function useSelectedAiModel() {
   const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
 
-  // Sync initial value from localStorage or cookie
+  // Sync initial value from localStorage or cookie with auto-migration of legacy models
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const readActiveModel = () => {
+      let candidate: string | null = null;
       const saved = localStorage.getItem("chai_ai_model");
-      if (saved && GEMINI_MODELS.some((m) => m.id === saved)) {
-        setModelId(saved);
+      if (saved) {
+        candidate = saved;
       } else {
         const cookieMatch = document.cookie.match(/(?:^|;\s*)chai_ai_model=([^;]+)/);
         if (cookieMatch && cookieMatch[1]) {
-          const cookieVal = decodeURIComponent(cookieMatch[1]);
-          if (GEMINI_MODELS.some((m) => m.id === cookieVal)) {
-            setModelId(cookieVal);
-          }
+          candidate = decodeURIComponent(cookieMatch[1]);
         }
+      }
+      const clean = sanitizeModelId(candidate);
+      setModelId(clean);
+
+      // Clean up legacy cookies or localStorage entries (e.g. gemini-1.5-pro)
+      if (candidate !== clean) {
+        localStorage.setItem("chai_ai_model", clean);
+        document.cookie = `chai_ai_model=${encodeURIComponent(clean)}; path=/; max-age=31536000; SameSite=Lax`;
       }
     };
 
@@ -133,7 +157,8 @@ export function useSelectedAiModel() {
     const handleModelChange = (e: Event) => {
       const customEvent = e as CustomEvent<string>;
       if (customEvent.detail) {
-        setModelId(customEvent.detail);
+        const clean = sanitizeModelId(customEvent.detail);
+        setModelId(clean);
       } else {
         readActiveModel();
       }
