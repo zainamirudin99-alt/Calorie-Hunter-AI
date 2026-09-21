@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { gemini } from "@/lib/gemini/client";
+import { gemini, resolveOfficialGeminiModel } from "@/lib/gemini/client";
+
 
 export const dynamic = "force-dynamic";
 
@@ -141,11 +142,14 @@ export async function GET(req: Request) {
   }
 
   // Fallback: Direct ping with maxOutputTokens: 5 and 2500ms timeout per candidate
+  const resolvedModel = resolveOfficialGeminiModel(model);
   const candidateModels = [
-    model,
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
+    resolvedModel,
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
   ].filter((m, i, arr) => arr.indexOf(m) === i);
+
 
   let firstError: any = null;
   let successfulModel: string | null = null;

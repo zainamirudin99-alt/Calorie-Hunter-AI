@@ -32,7 +32,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       applyTheme("godzilla");
     }
     setMounted(true);
+
+    // Background silent keep-alive check (max 1 ping per 24h per visitor to keep Supabase active)
+    try {
+      const lastPing = localStorage.getItem("chai_last_supaping");
+      const now = Date.now();
+      if (!lastPing || now - Number(lastPing) > 24 * 60 * 60 * 1000) {
+        localStorage.setItem("chai_last_supaping", String(now));
+        fetch("/api/cron/keep-alive?source=client-visit", { method: "GET", keepalive: true }).catch(() => {});
+      }
+    } catch {}
   }, []);
+
 
   const applyTheme = (newTheme: TacticalTheme) => {
     const root = document.documentElement;

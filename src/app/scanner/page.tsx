@@ -127,7 +127,8 @@ export default function TrackingMakananPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<any | null>(null);
   const [editablePreviewItems, setEditablePreviewItems] = useState<any[]>([]);
-  const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error" | "warning"; msg: string } | null>(null);
+
 
   // Program & Targets (TDEE from chosen program)
   const [activeProgramType, setActiveProgramType] = useState<ProgramType>("loss_fat_build_muscle");
@@ -505,10 +506,11 @@ export default function TrackingMakananPage() {
 
       if (data.is_fallback) {
         setActionFeedback({
-          type: "error",
-          msg: "AI mengalami kendala/kuota terlampaui. Menampilkan estimasi awal yang dapat Anda edit sebelum disimpan.",
+          type: "warning",
+          msg: "ESTIMASI CERDAS TAKTIS DIAKTIFKAN — Menggunakan dekonstruksi gizi lokal (10.010+ data pangan terverifikasi) karena server AI sedang padat/cooldown. Silakan sesuaikan takaran sebelum disimpan.",
         });
       }
+
     } catch (err: any) {
       setErrorMsg(err.message || "Gagal memproses analisis sensor AI");
     } finally {
@@ -914,20 +916,40 @@ export default function TrackingMakananPage() {
 
         {/* Feedback Alert */}
         {actionFeedback && (
-          <div className={`p-3 rounded font-mono text-xs flex items-center justify-between gap-2 ${
+          <div className={`p-3 rounded font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all ${
             actionFeedback.type === "success"
               ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-400"
+              : actionFeedback.type === "warning"
+              ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
               : "bg-red-500/10 border border-red-500/40 text-red-400"
           }`}>
-            <div className="flex items-center gap-2">
-              {actionFeedback.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              <span>{actionFeedback.msg}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              {actionFeedback.type === "success" && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+              {actionFeedback.type === "warning" && <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />}
+              {actionFeedback.type === "error" && <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
+              <span className="leading-relaxed">{actionFeedback.msg}</span>
             </div>
-            <button onClick={() => setActionFeedback(null)} className="text-outline hover:text-white">
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+              {actionFeedback.type === "warning" && (
+                <button
+                  type="button"
+                  onClick={handleProcessAI}
+                  disabled={loading}
+                  className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-mono text-[10px] font-bold uppercase flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Coba analisis ulang dengan sensor AI"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+                  <span>Pindai Ulang</span>
+                </button>
+              )}
+              <button onClick={() => setActionFeedback(null)} className="text-outline hover:text-white cursor-pointer p-0.5" title="Tutup Notifikasi">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
+
+
 
         {/* ========================================================================= */}
         {/* 2-COLUMN MAIN INTERACTION: INPUT SENSOR AI (LEFT) vs LOGGED MEALS (RIGHT) */}

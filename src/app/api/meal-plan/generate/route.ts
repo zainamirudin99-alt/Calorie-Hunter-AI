@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { gemini, PRIMARY_GEMINI_MODEL } from "@/lib/gemini/client";
+import { gemini, PRIMARY_GEMINI_MODEL, resolveOfficialGeminiModel } from "@/lib/gemini/client";
+
 import { createServerClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -266,11 +267,14 @@ Instruksi menu:
 
     // 4C: Google Gemini Series (with automatic capacity cascade without thinkingLevel HIGH)
     if (!generatedJson && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("placeholder")) {
+      const officialModel = resolveOfficialGeminiModel(selectedModel);
       const candidateModels = [
-        selectedModel.startsWith("gemini-") ? selectedModel : PRIMARY_GEMINI_MODEL,
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
+        officialModel,
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
+
 
       for (const currentModel of candidateModels) {
         try {

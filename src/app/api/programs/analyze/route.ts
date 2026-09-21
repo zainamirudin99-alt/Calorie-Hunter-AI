@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { gemini, PRIMARY_GEMINI_MODEL } from "@/lib/gemini/client";
+import { gemini, PRIMARY_GEMINI_MODEL, resolveOfficialGeminiModel } from "@/lib/gemini/client";
+
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { calculateTDEE, getProgramNutrientRules } from "@/lib/tdee/calculator";
 import { ProgramType } from "@/types/database";
@@ -190,12 +191,14 @@ Berikan analisis mendalam dan objektif dalam Bahasa Indonesia taktis:
 
     // Multi-Provider Step 3: Google Gemini Series with automated capacity cascade
     if (!aiAnalysis && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("placeholder")) {
+      const officialModel = resolveOfficialGeminiModel(selectedModel);
       const candidateModels = [
-        selectedModel.startsWith("gemini-") ? selectedModel : PRIMARY_GEMINI_MODEL,
-        PRIMARY_GEMINI_MODEL,
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
+        officialModel,
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
+
 
       for (const candidate of candidateModels) {
         try {
