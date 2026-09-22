@@ -24,10 +24,11 @@ export function resolveOfficialGeminiModel(requestedModel?: string | null): stri
   const m = requestedModel.toLowerCase().trim();
   if (m.includes("3.8")) return "gemini-3.8-flash";
   if (m.includes("3.7")) return "gemini-3.7-flash";
-  if (m.includes("3.6")) return "gemini-3.6-flash";
-  if (m.includes("3.1") || m.includes("pro")) return "gemini-3.1-pro-preview";
+  if (m.includes("3.5")) return "gemini-3.5-flash-lite";
+  if (m.includes("2.5") && m.includes("pro")) return "gemini-2.5-pro";
+  if (m.includes("2.5") && m.includes("lite")) return "gemini-2.5-flash-lite";
+  if (m.includes("2.5")) return "gemini-2.5-flash";
   if (m.includes("flash")) return "gemini-3.8-flash";
-  // Strict clamp: any unknown or legacy identifiers (1.5, 2.0, 2.5) clamp to PRIMARY_GEMINI_MODEL (3.8)
   return PRIMARY_GEMINI_MODEL;
 }
 
@@ -61,7 +62,14 @@ gemini.models.generateContent = async (params: any) => {
         delete cleanConfig.thinkingConfig;
       }
       
-      const fallbackModels = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-pro-preview"];
+      const fallbackModels = [
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+      ];
       for (const fallbackModel of fallbackModels) {
         if (fallbackModel === modelToTry) continue;
         try {

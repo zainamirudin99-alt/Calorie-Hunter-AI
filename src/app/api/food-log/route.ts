@@ -377,15 +377,7 @@ export async function POST(req: Request) {
     const headerModel = req.headers.get("x-ai-model")?.trim();
     let effectiveModel = formModel || headerModel || selectedModel || PRIMARY_GEMINI_MODEL;
 
-    // Strictly sanitize away any legacy model identifiers (1.5, 2.0, 2.5) to active 2026 models
-    const lowerEffective = effectiveModel.toLowerCase();
-    if (lowerEffective.includes("1.5") || lowerEffective.includes("2.0") || lowerEffective.includes("2.5")) {
-      if (lowerEffective.includes("pro") || lowerEffective.includes("3.1")) {
-        effectiveModel = "gemini-3.1-pro-preview";
-      } else {
-        effectiveModel = PRIMARY_GEMINI_MODEL;
-      }
-    }
+    effectiveModel = resolveOfficialGeminiModel(effectiveModel);
 
     // Per-client rate limit for AI inference (60 requests / minute)
     const rawIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "client-local";
@@ -633,8 +625,10 @@ ATURAN DEKONSTRUKSI MULTI-ITEM (WAJIB DIIKUTI):
         officialModel,
         "gemini-3.8-flash",
         "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-3.1-pro-preview",
+        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
       ].filter((m, i, arr) => arr.indexOf(m) === i);
 
       for (const currentCandidate of candidateModels) {

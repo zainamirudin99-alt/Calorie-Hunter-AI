@@ -39,19 +39,71 @@ export interface DeconstructedItem {
 
 let cachedDatabase: NutritionEntry[] | null = null;
 
+export function getCustomFoodItems(): NutritionEntry[] {
+  try {
+    const customPath = path.join(process.cwd(), "src/lib/nutrition/custom_foods.json");
+    if (fs.existsSync(customPath)) {
+      const raw = fs.readFileSync(customPath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn("[NutritionDB] Could not load custom_foods.json:", err);
+  }
+  return [];
+}
+
+export function saveCustomFoodItem(entry: Omit<NutritionEntry, "id"> & { id?: string }): NutritionEntry {
+  const customPath = path.join(process.cwd(), "src/lib/nutrition/custom_foods.json");
+  const existing = getCustomFoodItems();
+  
+  const newId = entry.id || `custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const newItem: NutritionEntry = {
+    ...entry,
+    id: newId,
+    source: entry.source || "Kustom (Pengguna)",
+  };
+
+  const updated = [newItem, ...existing.filter(it => it.id !== newId)];
+  try {
+    fs.writeFileSync(customPath, JSON.stringify(updated, null, 2), "utf8");
+    cachedDatabase = null; // Invalidate combined cache
+  } catch (err) {
+    console.error("[NutritionDB] Failed to save custom food:", err);
+  }
+  return newItem;
+}
+
+export function deleteCustomFoodItem(id: string): boolean {
+  const customPath = path.join(process.cwd(), "src/lib/nutrition/custom_foods.json");
+  const existing = getCustomFoodItems();
+  const updated = existing.filter(it => it.id !== id);
+  try {
+    fs.writeFileSync(customPath, JSON.stringify(updated, null, 2), "utf8");
+    cachedDatabase = null;
+    return true;
+  } catch (err) {
+    console.error("[NutritionDB] Failed to delete custom food:", err);
+    return false;
+  }
+}
+
 export function getNutritionDatabase(): NutritionEntry[] {
   if (cachedDatabase) return cachedDatabase;
+  const customList = getCustomFoodItems();
   try {
     const dbPath = path.join(process.cwd(), "src/lib/nutrition/database.json");
     if (fs.existsSync(dbPath)) {
       const raw = fs.readFileSync(dbPath, "utf8");
-      cachedDatabase = JSON.parse(raw);
-      return cachedDatabase || [];
+      const baseDb = JSON.parse(raw);
+      cachedDatabase = [...customList, ...(Array.isArray(baseDb) ? baseDb : [])];
+      return cachedDatabase;
     }
   } catch (err) {
     console.warn("[NutritionDB] Could not load database.json:", err);
   }
-  return [];
+  cachedDatabase = customList;
+  return cachedDatabase;
 }
 
 /**
@@ -226,9 +278,9 @@ export function searchFoodItems(query: string, limit = 25): NutritionEntry[] {
       }
     }
 
-    // Must match at least one token if query has multiple words
-    if (queryTokens.length > 1 && tokenMatches === queryTokens.length) {
-      score += 40;
+    // Prioritize user-added custom foods
+    if (item.source && (item.source.includes("Kustom") || item.source.includes("Pengguna"))) {
+      score += 60;
     }
 
     if (score > 0) {

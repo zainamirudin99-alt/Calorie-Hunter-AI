@@ -15,13 +15,13 @@ export interface GeminiModelInfo {
 }
 
 export const GEMINI_MODELS: GeminiModelInfo[] = [
-  // Google Gemini Series
+  // Google Gemini Series (All 6 Models)
   {
     id: "gemini-3.8-flash",
-    label: "Gemini 3.8 Flash (High • Google)",
-    shortName: "GEMINI 3.8 FLASH HIGH",
+    label: "Gemini 3.8 Flash (Terbaru • Google)",
+    shortName: "GEMINI 3.8 FLASH",
     badge: "RECOMMENDED",
-    description: "Multimodal turbo tingkat tinggi dengan penalaran gizi tinggi dan akurasi kalori maksimal.",
+    description: "Model flagship cepat versi paling baru untuk kebutuhan app umum dan multimodal vision.",
     provider: "google",
     envKeyName: "GEMINI_API_KEY",
   },
@@ -30,25 +30,43 @@ export const GEMINI_MODELS: GeminiModelInfo[] = [
     label: "Gemini 3.7 Flash (Google)",
     shortName: "GEMINI 3.7 FLASH",
     badge: "FAST",
-    description: "Model ultra-cepat responsif untuk inferensi cepat porsi dan gramatur makanan.",
+    description: "Seri Flash generasi 3 untuk analisis teks, koding, dan multimodal.",
     provider: "google",
     envKeyName: "GEMINI_API_KEY",
   },
   {
-    id: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash (Google)",
-    shortName: "GEMINI 3.6 FLASH",
-    badge: "LEGACY",
-    description: "Model stabil teruji untuk lingkungan jaringan dengan bandwidth rendah.",
+    id: "gemini-3.5-flash-lite",
+    label: "Gemini 3.5 Flash-Lite (Google)",
+    shortName: "GEMINI 3.5 LITE",
+    badge: "TURBO LITE",
+    description: "Versi lightweight berkecepatan ekstra tinggi untuk ekstraksi data makanan instan.",
     provider: "google",
     envKeyName: "GEMINI_API_KEY",
   },
   {
-    id: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro (Google Preview)",
-    shortName: "GEMINI 3.1 PRO",
-    badge: "PREVIEW",
-    description: "Model penalaran tingkat tinggi untuk analisis makronutrisi kompleks.",
+    id: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash (Stabil • Google)",
+    shortName: "GEMINI 2.5 FLASH",
+    badge: "STABLE",
+    description: "Model Flash stabil yang paling banyak digunakan untuk eksperimen & produksi.",
+    provider: "google",
+    envKeyName: "GEMINI_API_KEY",
+  },
+  {
+    id: "gemini-2.5-flash-lite",
+    label: "Gemini 2.5 Flash-Lite (Google)",
+    shortName: "GEMINI 2.5 LITE",
+    badge: "LIGHTWEIGHT",
+    description: "Sangat ringan untuk pemrosesan teks tingkat dasar dalam jumlah banyak.",
+    provider: "google",
+    envKeyName: "GEMINI_API_KEY",
+  },
+  {
+    id: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro (Google)",
+    shortName: "GEMINI 2.5 PRO",
+    badge: "PRO REASON",
+    description: "Model Pro untuk penalaran rumit (complex reasoning) dan analisis gizi mendalam.",
     provider: "google",
     envKeyName: "GEMINI_API_KEY",
   },
@@ -103,8 +121,10 @@ export function sanitizeModelId(raw?: string | null): string {
   const lower = raw.toLowerCase().trim();
   if (lower.includes("3.8")) return "gemini-3.8-flash";
   if (lower.includes("3.7")) return "gemini-3.7-flash";
-  if (lower.includes("3.6")) return "gemini-3.6-flash";
-  if (lower.includes("3.1") || lower.includes("pro")) return "gemini-3.1-pro-preview";
+  if (lower.includes("3.5")) return "gemini-3.5-flash-lite";
+  if (lower.includes("2.5") && lower.includes("pro")) return "gemini-2.5-pro";
+  if (lower.includes("2.5") && lower.includes("lite")) return "gemini-2.5-flash-lite";
+  if (lower.includes("2.5")) return "gemini-2.5-flash";
   if (lower.includes("flash")) return "gemini-3.8-flash";
   if (lower.includes("luna") || lower.includes("gpt-5.6")) return "gpt-5.6-luna";
   if (lower.includes("gpt-5") || lower.includes("thinking") || lower.includes("o3") || lower.includes("o1")) return "gpt-5-thinking-mini";

@@ -151,6 +151,23 @@ export default function TrackingMakananPage() {
   const [selectedDbItem, setSelectedDbItem] = useState<NutritionEntry | null>(null);
   const [manualWeightG, setManualWeightG] = useState<number>(100);
 
+  // Custom Food Modal State in Kamus Gizi
+  const [isAddCustomFoodOpen, setIsAddCustomFoodOpen] = useState(false);
+  const [customFoodForm, setCustomFoodForm] = useState({
+    name: "",
+    category: "Lauk Pauk",
+    calories: 150,
+    carbs: 15,
+    protein: 10,
+    fat: 5,
+    fiber: 1,
+    sugar: 1,
+    sodium: 120,
+    potassium: 150,
+    vitamin_c: 5,
+  });
+  const [isSavingCustomFood, setIsSavingCustomFood] = useState(false);
+
   // Analysis & Loading
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -444,22 +461,35 @@ export default function TrackingMakananPage() {
     const finalWeight = Math.max(1, Number(manualWeightG) || 100);
     const finalRatio = finalWeight / 100;
 
+    const base_per_100g = {
+      calories: Number(selectedDbItem.calories) || 0,
+      carbs: Number(selectedDbItem.carbs) || 0,
+      protein: Number(selectedDbItem.protein) || 0,
+      fat: Number(selectedDbItem.fat) || 0,
+      fiber: Number(selectedDbItem.fiber) || 0,
+      sugar: Number(selectedDbItem.sugar) || 0,
+      sodium: Number(selectedDbItem.sodium) || 0,
+      potassium: Number(selectedDbItem.potassium) || 0,
+      vitamin_c: Number(selectedDbItem.vitamin_c) || 0,
+    };
+
     const newItem = {
       food_name: selectedDbItem.name,
       estimated_weight_g: finalWeight,
-      calories_kcal: Math.round((selectedDbItem.calories || 0) * finalRatio),
+      calories_kcal: Math.round(base_per_100g.calories * finalRatio),
       macros: {
-        carbs_g: Number(((selectedDbItem.carbs || 0) * finalRatio).toFixed(1)),
-        protein_g: Number(((selectedDbItem.protein || 0) * finalRatio).toFixed(1)),
-        fat_g: Number(((selectedDbItem.fat || 0) * finalRatio).toFixed(1)),
-        fiber_g: Number(((selectedDbItem.fiber || 0) * finalRatio).toFixed(1)),
-        sugar_g: Number(((selectedDbItem.sugar || 0) * finalRatio).toFixed(1)),
+        carbs_g: Number((base_per_100g.carbs * finalRatio).toFixed(1)),
+        protein_g: Number((base_per_100g.protein * finalRatio).toFixed(1)),
+        fat_g: Number((base_per_100g.fat * finalRatio).toFixed(1)),
+        fiber_g: Number((base_per_100g.fiber * finalRatio).toFixed(1)),
+        sugar_g: Number((base_per_100g.sugar * finalRatio).toFixed(1)),
       },
       micros: {
-        sodium_mg: Math.round((selectedDbItem.sodium || 0) * finalRatio),
-        potassium_mg: Math.round((selectedDbItem.potassium || 0) * finalRatio),
-        vitamin_c_mg: Math.round((selectedDbItem.vitamin_c || 0) * finalRatio),
+        sodium_mg: Math.round(base_per_100g.sodium * finalRatio),
+        potassium_mg: Math.round(base_per_100g.potassium * finalRatio),
+        vitamin_c_mg: Math.round(base_per_100g.vitamin_c * finalRatio),
       },
+      base_per_100g,
     };
 
     setEditablePreviewItems((prev) => [...prev, newItem]);
@@ -469,6 +499,117 @@ export default function TrackingMakananPage() {
     });
     setSelectedDbItem(null);
     setDbSearchQuery("");
+  };
+
+  // Save an analyzed preview item directly into Kamus Gizi
+  const handleSavePreviewItemToDb = async (item: any) => {
+    try {
+      const curW = Math.max(1, Number(item.estimated_weight_g) || 100);
+      const ratio100 = 100 / curW;
+      const base = item.base_per_100g || {
+        calories: (Number(item.calories_kcal) || 0) * ratio100,
+        carbs: (Number(item.macros?.carbs_g) || 0) * ratio100,
+        protein: (Number(item.macros?.protein_g) || 0) * ratio100,
+        fat: (Number(item.macros?.fat_g) || 0) * ratio100,
+        fiber: (Number(item.macros?.fiber_g) || 0) * ratio100,
+        sugar: (Number(item.macros?.sugar_g) || 0) * ratio100,
+        sodium: (Number(item.micros?.sodium_mg) || 0) * ratio100,
+        potassium: (Number(item.micros?.potassium_mg) || 0) * ratio100,
+        vitamin_c: (Number(item.micros?.vitamin_c_mg) || 0) * ratio100,
+      };
+
+      const res = await fetch("/api/nutrition/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: item.food_name,
+          category: "Analisis AI / Kustom",
+          serving_g: 100,
+          calories: Math.round(base.calories),
+          carbs: Number(base.carbs.toFixed(1)),
+          protein: Number(base.protein.toFixed(1)),
+          fat: Number(base.fat.toFixed(1)),
+          fiber: Number(base.fiber.toFixed(1)),
+          sugar: Number(base.sugar.toFixed(1)),
+          sodium: Math.round(base.sodium),
+          potassium: Math.round(base.potassium),
+          vitamin_c: Math.round(base.vitamin_c),
+          source: "Kustom (Hasil AI)",
+        }),
+      });
+
+      if (res.ok) {
+        setActionFeedback({
+          type: "success",
+          msg: `Makanan "${item.food_name}" berhasil didaftarkan ke Kamus Gizi! Kini dapat dicari di tab Kamus Gizi.`,
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setActionFeedback({
+          type: "error",
+          msg: err.error || "Gagal mendaftarkan makanan ke Kamus Gizi",
+        });
+      }
+    } catch (err: any) {
+      setActionFeedback({
+        type: "error",
+        msg: "Gagal menyimpan ke Kamus Gizi: " + err.message,
+      });
+    }
+  };
+
+  // Create custom food from form in Kamus Gizi tab
+  const handleCreateCustomFood = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customFoodForm.name.trim()) return;
+    setIsSavingCustomFood(true);
+    try {
+      const res = await fetch("/api/nutrition/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: customFoodForm.name.trim(),
+          category: customFoodForm.category || "Kustom (Pilihan Pengguna)",
+          serving_g: 100,
+          calories: Number(customFoodForm.calories) || 0,
+          carbs: Number(customFoodForm.carbs) || 0,
+          protein: Number(customFoodForm.protein) || 0,
+          fat: Number(customFoodForm.fat) || 0,
+          fiber: Number(customFoodForm.fiber) || 0,
+          sugar: Number(customFoodForm.sugar) || 0,
+          sodium: Number(customFoodForm.sodium) || 0,
+          potassium: Number(customFoodForm.potassium) || 0,
+          vitamin_c: Number(customFoodForm.vitamin_c) || 0,
+          source: "Kustom (Pengguna)",
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const saved: NutritionEntry = data.item;
+        setActionFeedback({
+          type: "success",
+          msg: `Makanan "${saved.name}" berhasil ditambahkan ke Kamus Gizi!`,
+        });
+        setIsAddCustomFoodOpen(false);
+        setSelectedDbItem(saved);
+        setManualWeightG(100);
+        setDbSearchQuery(saved.name);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setActionFeedback({
+          type: "error",
+          msg: err.error || "Gagal menyimpan makanan ke kamus",
+        });
+      }
+    } catch (err: any) {
+      setActionFeedback({
+        type: "error",
+        msg: "Gagal menyimpan ke kamus: " + err.message,
+      });
+    } finally {
+      setIsSavingCustomFood(false);
+    }
   };
 
   // File selection with automatic client-side canvas compression & format sanitization
@@ -592,19 +733,38 @@ export default function TrackingMakananPage() {
       }
 
       const rawItems = data.preview?.items || data.data?.items || [];
-      const formattedItems = rawItems.map((item: any) => ({
-        food_name: item.food_name || "Makanan",
-        estimated_weight_g: Number(item.estimated_weight_g) || 150,
-        calories_kcal: Number(item.calories_kcal) || 200,
-        macros: {
-          carbs_g: Number(item.macros?.carbs_g) || 0,
-          protein_g: Number(item.macros?.protein_g) || 0,
-          fat_g: Number(item.macros?.fat_g) || 0,
-          fiber_g: Number(item.macros?.fiber_g) || 0,
-          sugar_g: Number(item.macros?.sugar_g) || 0,
-        },
-        micros: item.micros || {},
-      }));
+      const formattedItems = rawItems.map((item: any) => {
+        const weight = Math.max(1, Number(item.estimated_weight_g) || 100);
+        const ratio100 = 100 / weight;
+        const calories = Number(item.calories_kcal) || 0;
+        const carbs = Number(item.macros?.carbs_g) || 0;
+        const protein = Number(item.macros?.protein_g) || 0;
+        const fat = Number(item.macros?.fat_g) || 0;
+        const fiber = Number(item.macros?.fiber_g) || 0;
+        const sugar = Number(item.macros?.sugar_g) || 0;
+        const sodium = Number(item.micros?.sodium_mg) || 0;
+        const potassium = Number(item.micros?.potassium_mg) || 0;
+        const vitamin_c = Number(item.micros?.vitamin_c_mg) || 0;
+
+        return {
+          food_name: item.food_name || "Makanan",
+          estimated_weight_g: weight,
+          calories_kcal: calories,
+          macros: { carbs_g: carbs, protein_g: protein, fat_g: fat, fiber_g: fiber, sugar_g: sugar },
+          micros: { sodium_mg: sodium, potassium_mg: potassium, vitamin_c_mg: vitamin_c },
+          base_per_100g: {
+            calories: calories * ratio100,
+            carbs: carbs * ratio100,
+            protein: protein * ratio100,
+            fat: fat * ratio100,
+            fiber: fiber * ratio100,
+            sugar: sugar * ratio100,
+            sodium: sodium * ratio100,
+            potassium: potassium * ratio100,
+            vitamin_c: vitamin_c * ratio100,
+          },
+        };
+      });
 
       setAnalysisResult(data);
       setEditablePreviewItems(formattedItems);
@@ -615,29 +775,57 @@ export default function TrackingMakananPage() {
     }
   };
 
-  // Helper to update a preview item field (name, grams, etc.)
+  // Helper to update a preview item field (name, grams, etc.) without ever zeroing out macros/micros
   const handleUpdatePreviewItem = (index: number, field: string, val: any) => {
     setEditablePreviewItems((prev) => {
       const copy = [...prev];
       const target = { ...copy[index] };
 
       if (field === "estimated_weight_g") {
-        const newWeight = Math.max(1, Number(val) || 1);
-        const oldWeight = target.estimated_weight_g || 1;
-        const ratio = newWeight / oldWeight;
-        target.estimated_weight_g = newWeight;
-        target.calories_kcal = Math.round(target.calories_kcal * ratio);
+        if (!target.base_per_100g) {
+          const currentW = Math.max(1, Number(target.estimated_weight_g) || 100);
+          const ratio100 = 100 / currentW;
+          target.base_per_100g = {
+            calories: (Number(target.calories_kcal) || 0) * ratio100,
+            carbs: (Number(target.macros?.carbs_g) || 0) * ratio100,
+            protein: (Number(target.macros?.protein_g) || 0) * ratio100,
+            fat: (Number(target.macros?.fat_g) || 0) * ratio100,
+            fiber: (Number(target.macros?.fiber_g) || 0) * ratio100,
+            sugar: (Number(target.macros?.sugar_g) || 0) * ratio100,
+            sodium: (Number(target.micros?.sodium_mg) || 0) * ratio100,
+            potassium: (Number(target.micros?.potassium_mg) || 0) * ratio100,
+            vitamin_c: (Number(target.micros?.vitamin_c_mg) || 0) * ratio100,
+          };
+        }
+
+        const base = target.base_per_100g;
+        const numVal = Number(val);
+        target.estimated_weight_g = val === "" ? "" : isNaN(numVal) ? 0 : Math.max(0, numVal);
+
+        const safeWeight = isNaN(numVal) || numVal <= 0 ? 0 : numVal;
+        const multiplier = safeWeight / 100;
+
+        target.calories_kcal = Math.round(base.calories * multiplier);
         target.macros = {
-          carbs_g: Math.round(target.macros.carbs_g * ratio),
-          protein_g: Math.round(target.macros.protein_g * ratio),
-          fat_g: Math.round(target.macros.fat_g * ratio),
-          fiber_g: Math.round((target.macros.fiber_g || 0) * ratio),
-          sugar_g: Math.round((target.macros.sugar_g || 0) * ratio),
+          carbs_g: Number((base.carbs * multiplier).toFixed(1)),
+          protein_g: Number((base.protein * multiplier).toFixed(1)),
+          fat_g: Number((base.fat * multiplier).toFixed(1)),
+          fiber_g: Number((base.fiber * multiplier).toFixed(1)),
+          sugar_g: Number((base.sugar * multiplier).toFixed(1)),
+        };
+        target.micros = {
+          sodium_mg: Math.round(base.sodium * multiplier),
+          potassium_mg: Math.round(base.potassium * multiplier),
+          vitamin_c_mg: Math.round(base.vitamin_c * multiplier),
         };
       } else if (field === "food_name") {
         target.food_name = val;
       } else if (field === "calories_kcal") {
         target.calories_kcal = Number(val) || 0;
+        const curW = Number(target.estimated_weight_g) || 100;
+        if (target.base_per_100g && curW > 0) {
+          target.base_per_100g.calories = (target.calories_kcal * 100) / curW;
+        }
       }
 
       copy[index] = target;
@@ -657,7 +845,18 @@ export default function TrackingMakananPage() {
         estimated_weight_g: 100,
         calories_kcal: 150,
         macros: { carbs_g: 15, protein_g: 10, fat_g: 5, fiber_g: 1, sugar_g: 1 },
-        micros: {},
+        micros: { sodium_mg: 120, potassium_mg: 150, vitamin_c_mg: 5 },
+        base_per_100g: {
+          calories: 150,
+          carbs: 15,
+          protein: 10,
+          fat: 5,
+          fiber: 1,
+          sugar: 1,
+          sodium: 120,
+          potassium: 150,
+          vitamin_c: 5,
+        },
       },
     ]);
   };
