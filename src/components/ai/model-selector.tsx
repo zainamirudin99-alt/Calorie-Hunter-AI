@@ -53,10 +53,10 @@ export function ModelSelector({
         provider: selectedModel.provider.toUpperCase(),
         text: `Kunci API ${selectedModel.provider.toUpperCase()} belum diatur. Atur di Profil.`,
       });
-      return;
+    } else {
+      setWarningMsg(null);
     }
 
-    setWarningMsg(null);
     if (onChange) {
       onChange(newId);
     } else {

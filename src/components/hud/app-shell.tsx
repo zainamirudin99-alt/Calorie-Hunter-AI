@@ -26,9 +26,9 @@ export function AppShell({ children }: AppShellProps) {
       {/* Persistent Left Sidebar on Desktop (>=1024px) & Slide-over Drawer on Mobile (<1024px) */}
       <TacticalSidebar />
 
-      {/* Main Content Area: Offset by 18rem (w-72) on desktop (>=1024px), centered with max-w-[1200px] */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-72 w-full">
-        <div className="flex-1 w-full max-w-[1200px] mx-auto min-w-0 flex flex-col pb-24 lg:pb-8">
+      {/* Main Content Area: Full width on desktop with centered container, sidebar opens on-demand via DECK button */}
+      <div className="flex-1 flex flex-col min-w-0 w-full">
+        <div className="flex-1 w-full max-w-[1360px] mx-auto min-w-0 flex flex-col pb-24 lg:pb-8">
           {children}
         </div>
       </div>

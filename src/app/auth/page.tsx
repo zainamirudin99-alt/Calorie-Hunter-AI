@@ -120,21 +120,16 @@ export default function AuthPage() {
   return (
     <div className="relative min-h-[100dvh] flex flex-col justify-between overflow-x-hidden">
       {/* Background Neon Tokyo Kaiju Showdown with Cyberpunk Overlay */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <Image
-          src="/neon-tokyo-kaiju.png"
-          alt="Neon Tokyo Kaiju Showdown Cyberpunk Tactical Background"
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-center scale-105 select-none"
-        />
-        {/* Layer 1: Contrast base tint */}
-        <div className="absolute inset-0 bg-slate-950/80 dark:bg-slate-950/85 backdrop-blur-[2px]" />
-        {/* Layer 2: CRT scanline atmosphere */}
-        <div className="absolute inset-0 crt-scanlines opacity-35" />
-        {/* Layer 3: Vignette lighting gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/80" />
+      <div 
+        className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-cover bg-center"
+        style={{ backgroundImage: "url('/neon-tokyo-kaiju.png')" }}
+      >
+        {/* Layer 1: Contrast base tint - tuned for vibrant artwork visibility */}
+        <div className="absolute inset-0 bg-slate-950/15 dark:bg-slate-950/20" />
+        {/* Layer 2: Subtle CRT scanline atmosphere */}
+        <div className="absolute inset-0 crt-scanlines opacity-10" />
+        {/* Layer 3: Soft vignette lighting */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-slate-950/25" />
       </div>
 
       <div className="relative z-10 flex flex-col justify-between flex-1 min-h-[100dvh] min-w-0">

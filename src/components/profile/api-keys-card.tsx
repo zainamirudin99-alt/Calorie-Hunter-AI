@@ -40,20 +40,51 @@ export function ApiKeysCard() {
     Record<string, { type: "success" | "error"; message: string; latencyMs?: number }>
   >({});
 
+  const getAuthHeaders = (extra: Record<string, string> = {}) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+    return {
+      ...extra,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const syncKeysToLocalStorage = (keysList: KeySlotState[]) => {
+    if (typeof window === "undefined") return;
+    try {
+      const statusMap: Record<string, { hasKey: boolean; isTested: boolean; testStatus?: string }> = {};
+      keysList.forEach((k) => {
+        const hasKey = Boolean(k.hasKey || k.status === "valid" || k.status === "unverified");
+        const isTested = Boolean(k.status === "valid");
+        const testStatus = k.status || (hasKey ? "valid" : "unconfigured");
+        const entry = { hasKey, isTested, testStatus };
+        statusMap[k.provider] = entry;
+        if (k.provider === "gemini") {
+          statusMap["google"] = entry;
+        }
+      });
+      localStorage.setItem("chai_user_keys_status", JSON.stringify(statusMap));
+      window.dispatchEvent(new CustomEvent("chai_keys_updated"));
+    } catch {}
+  };
+
   const fetchKeys = useCallback(async () => {
     try {
-      const res = await fetch("/api/ai-keys");
+      const res = await fetch("/api/ai-keys", {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
-        setSlots(data.keys || []);
+        const keysList = data.keys || [];
+        setSlots(keysList);
         // Seed base URLs if already set
         const baseUrlsMap: Record<string, string> = {};
-        for (const k of data.keys || []) {
+        for (const k of keysList) {
           if (k.baseUrl) {
             baseUrlsMap[k.provider] = k.baseUrl;
           }
         }
         setInputBaseUrls((prev) => ({ ...baseUrlsMap, ...prev }));
+        syncKeysToLocalStorage(keysList);
       }
     } catch (err) {
       console.error("Gagal memuat status AI keys:", err);
@@ -86,7 +117,7 @@ export function ApiKeysCard() {
     try {
       const res = await fetch(`/api/ai-keys/${provider}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           apiKey: rawKey,
           baseUrl: provider === "openai" ? inputBaseUrls[provider]?.trim() || null : null,
@@ -103,7 +134,20 @@ export function ApiKeysCard() {
             latencyMs: data.latencyMs,
           },
         }));
-        // JANGAN simpan nilai API key di DOM/state: bersihkan form lokal segera
+
+        // Immediately update localStorage client cache so sidebar and scanner react without delay
+        if (typeof window !== "undefined") {
+          try {
+            const cached = JSON.parse(localStorage.getItem("chai_user_keys_status") || "{}");
+            const entry = { hasKey: true, isTested: data.status === "valid", testStatus: data.status || "valid" };
+            cached[provider] = entry;
+            if (provider === "gemini") cached["google"] = entry;
+            localStorage.setItem("chai_user_keys_status", JSON.stringify(cached));
+            window.dispatchEvent(new CustomEvent("chai_keys_updated"));
+          } catch {}
+        }
+
+        // Bersihkan input lokal segera
         setInputKeys((prev) => ({ ...prev, [provider]: "" }));
         await fetchKeys();
       } else {
@@ -127,7 +171,7 @@ export function ApiKeysCard() {
     try {
       const res = await fetch(`/api/ai-keys/${provider}/test`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           baseUrl: provider === "openai" ? inputBaseUrls[provider]?.trim() || null : null,
         }),
@@ -143,6 +187,18 @@ export function ApiKeysCard() {
             latencyMs: data.latencyMs,
           },
         }));
+
+        if (typeof window !== "undefined") {
+          try {
+            const cached = JSON.parse(localStorage.getItem("chai_user_keys_status") || "{}");
+            const entry = { hasKey: true, isTested: data.status === "valid", testStatus: data.status };
+            cached[provider] = entry;
+            if (provider === "gemini") cached["google"] = entry;
+            localStorage.setItem("chai_user_keys_status", JSON.stringify(cached));
+            window.dispatchEvent(new CustomEvent("chai_keys_updated"));
+          } catch {}
+        }
+
         await fetchKeys();
       } else {
         setFeedback((prev) => ({
@@ -167,6 +223,7 @@ export function ApiKeysCard() {
     try {
       const res = await fetch(`/api/ai-keys/${provider}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
 
       if (res.ok) {
@@ -175,6 +232,17 @@ export function ApiKeysCard() {
           [provider]: { type: "success", message: "Kunci berhasil dihapus dari penyimpanan aman." },
         }));
         setInputKeys((prev) => ({ ...prev, [provider]: "" }));
+
+        if (typeof window !== "undefined") {
+          try {
+            const cached = JSON.parse(localStorage.getItem("chai_user_keys_status") || "{}");
+            delete cached[provider];
+            if (provider === "gemini") delete cached["google"];
+            localStorage.setItem("chai_user_keys_status", JSON.stringify(cached));
+            window.dispatchEvent(new CustomEvent("chai_keys_updated"));
+          } catch {}
+        }
+
         await fetchKeys();
       } else {
         const data = await res.json();

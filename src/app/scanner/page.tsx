@@ -368,13 +368,13 @@ export default function TrackingMakananPage() {
 
   // Compute stats for currently selectedDate
   const currentDayLogs = logsByDate[selectedDate] || [];
-  const dayConsumedKcal = currentDayLogs.reduce((sum, item) => sum + (item.calories_kcal || 0), 0);
-  const dayConsumedProtein = currentDayLogs.reduce((sum, item) => sum + (item.macros?.protein_g || 0), 0);
-  const dayConsumedCarbs = currentDayLogs.reduce((sum, item) => sum + (item.macros?.carbs_g || 0), 0);
-  const dayConsumedFat = currentDayLogs.reduce((sum, item) => sum + (item.macros?.fat_g || 0), 0);
-  const dayConsumedSodium = currentDayLogs.reduce((sum, item) => sum + (item.micros?.sodium_mg || 0), 0);
-  const dayConsumedPotassium = currentDayLogs.reduce((sum, item) => sum + (item.micros?.potassium_mg || 0), 0);
-  const dayConsumedVitC = currentDayLogs.reduce((sum, item) => sum + (item.micros?.vitamin_c_mg || 0), 0);
+  const dayConsumedKcal = Math.round(currentDayLogs.reduce((sum, item) => sum + (item.calories_kcal || 0), 0));
+  const dayConsumedProtein = Math.round(currentDayLogs.reduce((sum, item) => sum + (item.macros?.protein_g || 0), 0) * 10) / 10;
+  const dayConsumedCarbs = Math.round(currentDayLogs.reduce((sum, item) => sum + (item.macros?.carbs_g || 0), 0) * 10) / 10;
+  const dayConsumedFat = Math.round(currentDayLogs.reduce((sum, item) => sum + (item.macros?.fat_g || 0), 0) * 10) / 10;
+  const dayConsumedSodium = Math.round(currentDayLogs.reduce((sum, item) => sum + (item.micros?.sodium_mg || 0), 0));
+  const dayConsumedPotassium = Math.round(currentDayLogs.reduce((sum, item) => sum + (item.micros?.potassium_mg || 0), 0));
+  const dayConsumedVitC = Math.round(currentDayLogs.reduce((sum, item) => sum + (item.micros?.vitamin_c_mg || 0), 0) * 10) / 10;
 
   const remainingKcal = calculateRemainingCalories(dailyTargetKcal, dayConsumedKcal);
   const pctConsumed = Math.min(100, Math.round((dayConsumedKcal / (dailyTargetKcal || 1)) * 100));
@@ -1267,9 +1267,9 @@ export default function TrackingMakananPage() {
                     INPUT RANSUM: {selectedDate}
                   </h3>
                 </div>
-                {/* Dynamic AI Model Selector (Multimodal Vision Only) */}
+                {/* Dynamic AI Model Selector (All Available Models) */}
                 <div className="w-full sm:w-auto min-w-0">
-                  <ModelSelector compact visionOnly />
+                  <ModelSelector compact />
                 </div>
               </div>
 

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { useTacticalTheme } from "@/components/theme-provider";
 import { 
   ScanLine, 
@@ -18,6 +19,8 @@ interface HeaderProps {
 }
 
 export function TacticalHeader({ onOpenSidebar }: HeaderProps) {
+  const pathname = usePathname();
+  const isAuthPage = pathname === "/auth" || pathname === "/login";
   const { isUltraman, toggleTheme, toggleSidebar } = useTacticalTheme();
   const [isGlobalSyncing, setIsGlobalSyncing] = useState(false);
 
@@ -43,18 +46,20 @@ export function TacticalHeader({ onOpenSidebar }: HeaderProps) {
     <header className="w-full px-2.5 sm:px-4 md:px-6 py-1.5 sm:py-2.5 flex items-center justify-between border-b hud-border hud-card z-50 sticky top-0 theme-transition shadow-lg">
       {/* Leading Section: Mobile DECK Trigger + Brand Identity */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
-        {/* Tactical Command Deck Trigger: Hanya muncul di mobile (<1024px) karena desktop sudah ada sidebar tetap */}
-        <button
-          onClick={handleSidebarClick}
-          className="min-h-[38px] min-w-[38px] sm:min-h-[40px] sm:min-w-[40px] px-2 rounded hud-card-inner border hud-border flex items-center justify-center gap-1 hover:border-primary transition-all group shrink-0 shadow-sm cursor-pointer lg:hidden"
-          title="Buka Tactical Command Deck"
-          aria-label="Buka Command Deck"
-        >
-          <Menu className="w-4 h-4 hud-hero-text group-hover:scale-110 transition-transform shrink-0" />
-          <span className="hidden sm:inline font-mono text-[10px] hud-text-muted group-hover:hud-text uppercase font-bold tracking-wider">
-            DECK
-          </span>
-        </button>
+        {/* Tactical Command Deck Trigger: Muncul di desktop dan mobile untuk membuka sidebar on-demand */}
+        {!isAuthPage && (
+          <button
+            onClick={handleSidebarClick}
+            className="min-h-[38px] min-w-[38px] sm:min-h-[40px] sm:min-w-[40px] px-2 sm:px-2.5 rounded hud-card-inner border hud-border flex items-center justify-center gap-1 sm:gap-1.5 hover:border-primary transition-all group shrink-0 shadow-sm cursor-pointer"
+            title="Buka Tactical Command Deck"
+            aria-label="Buka Command Deck"
+          >
+            <Menu className="w-4 h-4 hud-hero-text group-hover:scale-110 transition-transform shrink-0" />
+            <span className="hidden sm:inline font-mono text-[10px] hud-text-muted group-hover:hud-text uppercase font-bold tracking-wider">
+              DECK
+            </span>
+          </button>
+        )}
 
         {/* Brand & System Logo */}
         <Link href="/" className="flex items-center gap-1.5 sm:gap-2.5 group shrink-0 min-w-0">

@@ -81,7 +81,7 @@ export async function getUserAvailableKeys(userId: string): Promise<UserApiKeyIn
     .from("user_api_keys")
     .select("provider, key_enc, key_last4, base_url, status")
     .eq("user_id", userId)
-    .eq("status", "valid");
+    .in("status", ["valid", "unverified"]);
 
   if (error || !data) {
     return [];

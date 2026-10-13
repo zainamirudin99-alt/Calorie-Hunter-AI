@@ -283,7 +283,15 @@ export function useSelectedAiModel() {
  * Gracefully fallbacks if user is unauthenticated.
  */
 export function useAiKeyStatus() {
-  const [userKeys, setUserKeys] = useState<Record<string, { hasKey: boolean; isTested: boolean; testStatus?: string }>>({});
+  const [userKeys, setUserKeys] = useState<Record<string, { hasKey: boolean; isTested: boolean; testStatus?: string }>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("chai_user_keys_status");
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return {};
+  });
   const [serverEnvKeys, setServerEnvKeys] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
@@ -294,7 +302,7 @@ export function useAiKeyStatus() {
 
       const [keysRes, healthRes] = await Promise.all([
         fetch("/api/ai-keys", { headers }).catch(() => null),
-        fetch("/api/ai/health").catch(() => null),
+        fetch("/api/ai/health", { headers }).catch(() => null),
       ]);
 
       if (keysRes && keysRes.ok) {
@@ -302,13 +310,26 @@ export function useAiKeyStatus() {
         if (keysData.keys && Array.isArray(keysData.keys)) {
           const mapped: Record<string, { hasKey: boolean; isTested: boolean; testStatus?: string }> = {};
           keysData.keys.forEach((k: any) => {
-            mapped[k.provider] = {
-              hasKey: !!k.has_key,
-              isTested: !!k.is_tested,
-              testStatus: k.test_status,
-            };
+            const hasKey = Boolean(k.hasKey || k.has_key || k.status === "valid" || k.status === "unverified");
+            const isTested = Boolean(k.isTested || k.is_tested || k.status === "valid");
+            const testStatus = k.status || k.test_status || (hasKey ? "valid" : "unconfigured");
+
+            const entry = { hasKey, isTested, testStatus };
+            mapped[k.provider] = entry;
+
+            // Bridge provider names: "gemini" in backend <-> "google" in frontend
+            if (k.provider === "gemini") {
+              mapped["google"] = entry;
+            } else if (k.provider === "google") {
+              mapped["gemini"] = entry;
+            }
           });
           setUserKeys(mapped);
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem("chai_user_keys_status", JSON.stringify(mapped));
+            } catch {}
+          }
         }
       }
 
@@ -339,12 +360,25 @@ export function useAiKeyStatus() {
   }, [fetchStatus]);
 
   const isProviderAvailable = useCallback((provider: AiProvider): boolean => {
-    // 1. User has custom BYOK key
+    // 1. User has custom BYOK key (check both google and gemini aliases)
     if (userKeys[provider]?.hasKey) return true;
+    if (provider === "google" && userKeys["gemini"]?.hasKey) return true;
+    if ((provider as string) === "gemini" && userKeys["google"]?.hasKey) return true;
+
+    // Check localStorage cache as immediate client fallback
+    if (typeof window !== "undefined") {
+      try {
+        const cached = JSON.parse(localStorage.getItem("chai_user_keys_status") || "{}");
+        if (cached[provider]?.hasKey || cached[provider]?.status === "valid" || cached[provider]?.testStatus === "valid") return true;
+        if (provider === "google" && (cached["gemini"]?.hasKey || cached["gemini"]?.status === "valid" || cached["gemini"]?.testStatus === "valid")) return true;
+        if ((provider as string) === "gemini" && (cached["google"]?.hasKey || cached["google"]?.status === "valid" || cached["google"]?.testStatus === "valid")) return true;
+      } catch {}
+    }
 
     // 2. Server has default environment key
-    const envKeyMap: Record<AiProvider, string> = {
+    const envKeyMap: Record<string, string> = {
       google: "GEMINI_API_KEY",
+      gemini: "GEMINI_API_KEY",
       openai: "OPENAI_API_KEY",
       deepseek: "DEEPSEEK_API_KEY",
       groq: "GROQ_API_KEY",
