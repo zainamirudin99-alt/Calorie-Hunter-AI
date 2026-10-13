@@ -76,14 +76,16 @@ export default function AuthPage() {
         });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
-          let targetPath = "/";
-          if (!statusData.has_profile) {
-            targetPath = "/profile";
-          } else if (!statusData.has_program) {
-            targetPath = "/program";
+          if (statusData.authenticated) {
+            let targetPath = "/";
+            if (!statusData.has_profile) {
+              targetPath = "/profile";
+            } else if (!statusData.has_program) {
+              targetPath = "/program";
+            }
+            window.location.href = targetPath;
+            return;
           }
-          window.location.href = targetPath;
-          return;
         }
       } catch {}
 

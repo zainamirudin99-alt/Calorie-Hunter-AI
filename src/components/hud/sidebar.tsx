@@ -71,17 +71,19 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
       setSelectedModel(sanitizeModelId(savedModel));
     }
 
-    // Check if user is admin
+    // Check if user is admin only if token exists
     const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+    if (!token) return;
+
     fetch("/api/auth/status", {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: { Authorization: `Bearer ${token}` },
     })
       .then(res => res.json())
       .then(data => {
-        if (data.isAdmin || data.username === "zainamrdn99") {
+        if (data.authenticated && (data.isAdmin || data.username === "zainamrdn99")) {
           setIsAdmin(true);
         }
-        if (data.preferred_gemini_model) {
+        if (data.authenticated && data.preferred_gemini_model) {
           const clean = sanitizeModelId(data.preferred_gemini_model);
           setSelectedModel(clean);
           localStorage.setItem("chai_ai_model", clean);

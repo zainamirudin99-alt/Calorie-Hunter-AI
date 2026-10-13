@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     if (userError || !user) {
       return NextResponse.json(
         { authenticated: false, message: "Belum login atau sesi telah kedaluwarsa" },
-        { status: 401 }
+        { status: 200 }
       );
     }
 
