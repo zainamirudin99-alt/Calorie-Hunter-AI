@@ -116,16 +116,35 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between">
-      <TacticalHeader />
+    <div className="relative min-h-[100dvh] flex flex-col justify-between overflow-x-hidden">
+      {/* Background Neon Tokyo Kaiju Showdown with Cyberpunk Overlay */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <Image
+          src="/neon-tokyo-kaiju.png"
+          alt="Neon Tokyo Kaiju Showdown Cyberpunk Tactical Background"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-center scale-105 select-none"
+        />
+        {/* Layer 1: Contrast base tint */}
+        <div className="absolute inset-0 bg-slate-950/80 dark:bg-slate-950/85 backdrop-blur-[2px]" />
+        {/* Layer 2: CRT scanline atmosphere */}
+        <div className="absolute inset-0 crt-scanlines opacity-35" />
+        {/* Layer 3: Vignette lighting gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/80" />
+      </div>
 
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-md hud-card border rounded p-6 sm:p-8 relative shadow-2xl theme-transition overflow-hidden">
-          {/* Reticle corner markers */}
-          <div className="absolute top-2 left-2 text-outline font-mono text-[9px]">[+]</div>
-          <div className="absolute top-2 right-2 text-outline font-mono text-[9px]">[+]</div>
-          <div className="absolute bottom-2 left-2 text-outline font-mono text-[9px]">[+]</div>
-          <div className="absolute bottom-2 right-2 text-outline font-mono text-[9px]">[+]</div>
+      <div className="relative z-10 flex flex-col justify-between flex-1 min-h-[100dvh] min-w-0">
+        <TacticalHeader />
+
+        <main className="flex-1 flex items-center justify-center px-4 py-6 sm:px-6 sm:py-8 w-full max-w-7xl mx-auto min-w-0">
+          <div className="w-full max-w-md hud-card border border-primary/40 rounded-lg p-5 sm:p-8 relative shadow-2xl backdrop-blur-md bg-slate-950/90 dark:bg-slate-950/95 theme-transition overflow-hidden min-w-0">
+            {/* Reticle corner markers */}
+            <div className="absolute top-2 left-2 text-outline font-mono text-[9px]">[+]</div>
+            <div className="absolute top-2 right-2 text-outline font-mono text-[9px]">[+]</div>
+            <div className="absolute bottom-2 left-2 text-outline font-mono text-[9px]">[+]</div>
+            <div className="absolute bottom-2 right-2 text-outline font-mono text-[9px]">[+]</div>
 
           {/* Logo & Header */}
           <div className="text-center mb-6">
@@ -152,7 +171,7 @@ export default function AuthPage() {
             <button
               type="button"
               onClick={() => { setMode("login"); setErrorMsg(null); setShowForgotModal(false); }}
-              className={`py-2 text-xs font-mono font-bold uppercase transition-all rounded cursor-pointer ${
+              className={`min-h-[44px] py-2 px-3 text-xs font-mono font-bold uppercase transition-all rounded cursor-pointer flex items-center justify-center ${
                 mode === "login"
                   ? "hud-hero-bg shadow"
                   : "hud-text-muted hover:hud-text"
@@ -163,7 +182,7 @@ export default function AuthPage() {
             <button
               type="button"
               onClick={() => { setMode("register"); setErrorMsg(null); setShowForgotModal(false); }}
-              className={`py-2 text-xs font-mono font-bold uppercase transition-all rounded cursor-pointer ${
+              className={`min-h-[44px] py-2 px-3 text-xs font-mono font-bold uppercase transition-all rounded cursor-pointer flex items-center justify-center ${
                 mode === "register"
                   ? "hud-hero-bg shadow"
                   : "hud-text-muted hover:hud-text"
@@ -177,14 +196,14 @@ export default function AuthPage() {
           {errorMsg && (
             <div className="mb-4 p-3 rounded bg-red-500/10 border border-red-500/40 text-red-400 font-mono text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+              <span className="break-words">{errorMsg}</span>
             </div>
           )}
 
           {successMsg && (
             <div className="mb-4 p-3 rounded bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 font-mono text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{successMsg}</span>
+              <span className="break-words">{successMsg}</span>
             </div>
           )}
 
@@ -204,7 +223,7 @@ export default function AuthPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="masukkan username..."
-                  className="w-full pl-9 pr-3 py-2.5 rounded hud-card-inner border hud-border text-xs font-mono hud-text focus:outline-none focus:border-primary transition-colors"
+                  className="w-full pl-9 pr-3 py-2.5 rounded hud-card-inner border hud-border text-base sm:text-sm font-mono hud-text focus:outline-none focus:border-primary transition-colors min-h-[44px]"
                 />
               </div>
             </div>
@@ -222,7 +241,7 @@ export default function AuthPage() {
                       setShowForgotModal(true);
                       setForgotStatus(null);
                     }}
-                    className="text-outline hover:hud-hero-text transition-colors text-[11px] underline cursor-pointer"
+                    className="text-outline hover:hud-hero-text transition-colors text-xs underline cursor-pointer min-h-[36px] flex items-center px-1"
                   >
                     Lupa Password?
                   </button>
@@ -238,7 +257,7 @@ export default function AuthPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-3 py-2.5 rounded hud-card-inner border hud-border text-xs font-mono hud-text focus:outline-none focus:border-primary transition-colors"
+                  className="w-full pl-9 pr-3 py-2.5 rounded hud-card-inner border hud-border text-base sm:text-sm font-mono hud-text focus:outline-none focus:border-primary transition-colors min-h-[44px]"
                 />
               </div>
             </div>
@@ -246,7 +265,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-50 mt-4 cursor-pointer"
+              className="w-full min-h-[44px] hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs sm:text-sm font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-50 mt-4 cursor-pointer"
             >
               {loading ? (
                 <span>MEMPROSES PROTOKOL...</span>
@@ -263,7 +282,7 @@ export default function AuthPage() {
           {showForgotModal && (
             <div className="mt-5 p-4 rounded hud-card-inner border border-amber-500/40 space-y-3 bg-amber-500/5 animate-in fade-in-50 duration-150">
               <div className="flex items-center gap-2 text-amber-400 font-mono text-xs font-bold">
-                <HelpCircle className="w-4 h-4" />
+                <HelpCircle className="w-4 h-4 shrink-0" />
                 <span>INFORMASI RESET PASSWORD MANUAL</span>
               </div>
               
@@ -271,35 +290,35 @@ export default function AuthPage() {
                 <p className="leading-relaxed">
                   Hubungi Instagram <strong className="text-white">@Jenbonjovi</strong> untuk reset password secara manual.
                 </p>
-                <div className="flex items-center gap-2 text-outline text-[11px] pt-1 border-t hud-border">
-                  <Instagram className="w-3.5 h-3.5 text-pink-400" />
+                <div className="flex items-center gap-2 text-outline text-xs pt-1 border-t hud-border">
+                  <Instagram className="w-4 h-4 text-pink-400 shrink-0" />
                   <span>Instagram: @Jenbonjovi</span>
                 </div>
               </div>
 
               <div className="space-y-2 pt-1 font-mono text-xs">
-                <label className="block text-outline text-[10px] uppercase">
+                <label className="block text-outline text-[11px] uppercase">
                   Atau Kirimkan Notifikasi Langsung ke Admin (@zainamrdn99):
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <input
                     type="text"
                     value={forgotUsername}
                     onChange={(e) => setForgotUsername(e.target.value)}
                     placeholder="Username yang ingin di-reset..."
-                    className="flex-1 px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
+                    className="flex-1 px-3 py-2 rounded hud-card border hud-border text-base sm:text-xs hud-text focus:outline-none focus:border-primary min-h-[40px]"
                   />
                   <button
                     type="button"
                     onClick={handleSendResetToAdmin}
-                    className="px-3 py-1.5 rounded hud-hero-bg text-black font-bold text-xs uppercase flex items-center gap-1 cursor-pointer"
+                    className="min-h-[40px] px-4 py-2 rounded hud-hero-bg text-black font-bold text-xs uppercase flex items-center justify-center gap-1 cursor-pointer"
                   >
-                    <Send className="w-3 h-3" />
+                    <Send className="w-3.5 h-3.5" />
                     <span>Kirim</span>
                   </button>
                 </div>
                 {forgotStatus && (
-                  <p className="text-[11px] text-emerald-400 font-mono mt-1">
+                  <p className="text-xs text-emerald-400 font-mono mt-1 break-words">
                     {forgotStatus}
                   </p>
                 )}
@@ -308,9 +327,9 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={() => setShowForgotModal(false)}
-                className="w-full py-1.5 text-center font-mono text-[11px] text-outline hover:text-white uppercase mt-2"
+                className="w-full min-h-[44px] py-2 text-center font-mono text-xs text-outline hover:text-white uppercase mt-2 flex items-center justify-center border border-dashed hud-border rounded cursor-pointer"
               >
-                [Tutup Informasi]
+                [TUTUP INFORMASI]
               </button>
             </div>
           )}
@@ -325,6 +344,7 @@ export default function AuthPage() {
       </main>
 
       <TacticalFooter />
+      </div>
     </div>
   );
 }

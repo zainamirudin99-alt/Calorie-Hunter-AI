@@ -2,8 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { MobileTacticalDock } from "@/components/hud/mobile-dock";
-import { TacticalSidebar } from "@/components/hud/sidebar";
+import { AppShell } from "@/components/hud/app-shell";
 import { PwaRegistrar } from "@/components/pwa-registrar";
 
 const spaceGrotesk = Space_Grotesk({
@@ -61,12 +60,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Calorie Hunter" />
       </head>
       <body
-        className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans hud-surface-bg hud-text antialiased min-h-screen flex flex-col overflow-x-hidden theme-transition pb-20 md:pb-0`}
+        className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans hud-surface-bg hud-text antialiased min-h-[100dvh] flex flex-col overflow-x-hidden theme-transition`}
       >
         <ThemeProvider>
-          {children}
-          <TacticalSidebar />
-          <MobileTacticalDock />
+          <AppShell>
+            {children}
+          </AppShell>
           <PwaRegistrar />
         </ThemeProvider>
       </body>

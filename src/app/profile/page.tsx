@@ -18,6 +18,7 @@ import {
   CheckCircle2, 
   AlertCircle, 
   ArrowRight,
+  ArrowLeft,
   Flame,
   Zap,
   Plus,
@@ -27,9 +28,12 @@ import {
   Cpu,
   RefreshCw,
   AlertTriangle,
-  ShieldAlert
+  ShieldAlert,
+  ExternalLink
 } from "lucide-react";
 import { GEMINI_MODELS, getGeminiModelById, DEFAULT_MODEL_ID, sanitizeModelId } from "@/lib/gemini/models";
+import { ApiKeysCard } from "@/components/profile/api-keys-card";
+import { ModelSelector } from "@/components/ai/model-selector";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -307,21 +311,6 @@ export default function ProfilePage() {
     }
   };
 
-  // Initial sync & global event listener
-  useEffect(() => {
-    syncServerData(true);
-    checkAiHealth();
-
-    const handleGlobalSync = () => {
-      syncServerData(false);
-    };
-
-    window.addEventListener("chai_trigger_cloud_sync", handleGlobalSync);
-    return () => {
-      window.removeEventListener("chai_trigger_cloud_sync", handleGlobalSync);
-    };
-  }, []);
-
   const handleModelChange = (newModel: string) => {
     setSelectedModel(newModel);
     localStorage.setItem("chai_ai_model", newModel);
@@ -445,37 +434,36 @@ export default function ProfilePage() {
       <TacticalHeader activeTab="profile" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8">
+      <main className="w-full max-w-7xl mx-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 space-y-6 min-w-0 pb-24 md:pb-8 flex-1">
+        
+        {/* BAGIAN 1: DATA DIRI / BIOMETRIK & RADAR TDEE */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* Profile Form (Cols 1-7) */}
-          <div className="lg:col-span-7 hud-card border rounded-lg p-4 sm:p-6 relative shadow-xl theme-transition">
-            <div className="flex items-center justify-between pb-3 sm:pb-4 mb-4 sm:mb-6 border-b hud-border">
-              <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Form Biometrik Hunter (Cols 1-7) */}
+          <div className="lg:col-span-7 hud-card border rounded-lg p-4 sm:p-6 relative shadow-xl theme-transition min-w-0">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 sm:pb-4 mb-4 sm:mb-6 border-b hud-border min-w-0">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
                 <User className="w-5 h-5 hud-hero-text shrink-0" />
-                <div>
-                  <h1 className="font-display text-sm sm:text-base font-bold hud-text uppercase">
+                <div className="min-w-0">
+                  <h1 className="font-display text-sm sm:text-base font-bold hud-text uppercase truncate">
                     DATA DIRI BIOMETRIK HUNTER
                   </h1>
-                  <span className="font-mono text-[9px] sm:text-[10px] text-outline uppercase block">
+                  <span className="font-mono text-[9px] sm:text-[10px] text-outline uppercase block truncate">
                     {isUltraman ? "SCIENCE PATROL BIO-DATA" : "TITAN BIO-METRICS"}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => syncServerData(false)}
                   disabled={isProfileSyncing}
-                  className="py-1 px-2.5 rounded hud-card-inner border hud-border hover:border-primary font-mono text-[10px] sm:text-[11px] font-bold uppercase flex items-center gap-1.5 text-slate-300 hover:text-white transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                  className="w-full sm:w-auto min-h-[44px] py-1.5 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-[10px] sm:text-[11px] font-bold uppercase flex items-center justify-center gap-1.5 text-slate-300 hover:text-white transition-all disabled:opacity-50 cursor-pointer shadow-sm"
                   title="Sinkronkan data profil dari database Cloud"
                 >
-                  <RefreshCw className={`w-3 h-3 ${isProfileSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
-                  <span>{isProfileSyncing ? "SINKRONISASI..." : "SINKRONKAN CLOUD"}</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${isProfileSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+                  <span>{isProfileSyncing ? "SINKRON..." : "SINKRON CLOUD"}</span>
                 </button>
-                <span className="font-mono text-[10px] sm:text-xs px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold hidden sm:inline-block">
-                  FASE 1: AKTIF
-                </span>
               </div>
             </div>
 
@@ -498,7 +486,7 @@ export default function ProfilePage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Captain Hayata / Kenjiro"
-                  className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
+                  className="w-full min-h-[44px] px-3 py-2.5 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-base sm:text-xs"
                 />
               </div>
 
@@ -509,9 +497,9 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setGender("male")}
-                    className={`py-2 px-2 sm:px-3 rounded border text-center font-bold uppercase transition-all text-xs ${
+                    className={`min-h-[44px] py-2 px-3 rounded border text-center font-bold uppercase transition-all text-xs flex items-center justify-center ${
                       gender === "male" 
-                        ? "hud-hero-bg border-transparent shadow" 
+                        ? "hud-hero-bg border-transparent shadow text-black" 
                         : "hud-card-inner hud-border hud-text-muted hover:hud-text"
                     }`}
                   >
@@ -520,9 +508,9 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setGender("female")}
-                    className={`py-2 px-2 sm:px-3 rounded border text-center font-bold uppercase transition-all text-xs ${
+                    className={`min-h-[44px] py-2 px-3 rounded border text-center font-bold uppercase transition-all text-xs flex items-center justify-center ${
                       gender === "female" 
-                        ? "hud-hero-bg border-transparent shadow" 
+                        ? "hud-hero-bg border-transparent shadow text-black" 
                         : "hud-card-inner hud-border hud-text-muted hover:hud-text"
                     }`}
                   >
@@ -542,7 +530,7 @@ export default function ProfilePage() {
                     required
                     value={age}
                     onChange={(e) => setAge(Number(e.target.value))}
-                    className="w-full px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
+                    className="w-full min-h-[44px] px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-base sm:text-xs"
                   />
                 </div>
 
@@ -555,7 +543,7 @@ export default function ProfilePage() {
                     required
                     value={heightCm}
                     onChange={(e) => setHeightCm(Number(e.target.value))}
-                    className="w-full px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
+                    className="w-full min-h-[44px] px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-base sm:text-xs"
                   />
                 </div>
 
@@ -569,7 +557,7 @@ export default function ProfilePage() {
                     required
                     value={weightKg}
                     onChange={(e) => setWeightKg(Number(e.target.value))}
-                    className="w-full px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-xs"
+                    className="w-full min-h-[44px] px-2 sm:px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary text-base sm:text-xs"
                   />
                 </div>
               </div>
@@ -579,7 +567,7 @@ export default function ProfilePage() {
                 <label className="block hud-text-muted uppercase mb-1.5">
                   Aktivitas Fisik Mingguan (Pengali Dasar PAL)
                 </label>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {[
                     { id: "sedentary", title: "Sedentary (1.2x)", desc: "Sedikit atau tanpa olahraga rutin" },
                     { id: "light", title: "Ringan (1.375x)", desc: "Olahraga ringan 1-3 hari/minggu" },
@@ -590,17 +578,17 @@ export default function ProfilePage() {
                     <label
                       key={item.id}
                       onClick={() => setActivityLevel(item.id as ActivityLevel)}
-                      className={`flex items-center justify-between p-2.5 rounded border cursor-pointer transition-all ${
+                      className={`flex items-center justify-between p-3 rounded border cursor-pointer transition-all min-h-[44px] ${
                         activityLevel === item.id
                           ? "hud-card-high border-primary hud-text"
                           : "hud-card-inner hud-border hud-text-muted hover:border-primary/50"
                       }`}
                     >
                       <div>
-                        <span className="font-bold block">{item.title}</span>
+                        <span className="font-bold block text-xs">{item.title}</span>
                         <span className="text-[10px] text-outline block">{item.desc}</span>
                       </div>
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
                         activityLevel === item.id ? "border-primary hud-hero-bg" : "hud-border"
                       }`}>
                         {activityLevel === item.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
@@ -610,146 +598,11 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Bagian Aktivitas Mingguan (Onboarding) */}
-              <div className="pt-4 border-t hud-border">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block hud-text font-bold uppercase text-xs">
-                    Jadwal Aktivitas Mingguan Hunter
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddForm(!showAddForm)}
-                    className="px-2.5 py-1 rounded hud-card-high border hud-border text-primary font-mono text-[11px] font-bold flex items-center gap-1 hover:bg-primary/10 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Tambah Aktivitas</span>
-                  </button>
-                </div>
-                <p className="text-[10px] text-outline mb-3">
-                  Centang aktivitas olahraga rutin Anda atau tambahkan kegiatan kustom untuk konteks kalkulasi AI:
-                </p>
-
-                {/* Inline Add Custom Activity Form */}
-                {showAddForm && (
-                  <div className="mb-4 p-3 rounded hud-card-inner border hud-border space-y-3 bg-primary/5">
-                    <div className="font-bold text-[11px] hud-hero-text">INPUT AKTIVITAS BARU:</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
-                        <span className="text-[10px] text-outline block mb-1">Nama Aktivitas:</span>
-                        <input
-                          type="text"
-                          value={newActName}
-                          onChange={(e) => setNewActName(e.target.value)}
-                          placeholder="e.g. Futsal, Muay Thai, Pilates"
-                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-outline block mb-1">Intensitas:</span>
-                        <select
-                          value={newActIntensity}
-                          onChange={(e) => setNewActIntensity(e.target.value as any)}
-                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
-                        >
-                          <option value="low">Ringan (Low)</option>
-                          <option value="moderate">Sedang (Moderate)</option>
-                          <option value="high">Tinggi (High)</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="text-[10px] text-outline block mb-1">Frekuensi / Minggu:</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={7}
-                          value={newActFreq}
-                          onChange={(e) => setNewActFreq(Number(e.target.value))}
-                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-outline block mb-1">Durasi (Menit):</span>
-                        <input
-                          type="number"
-                          min={10}
-                          max={240}
-                          value={newActDuration}
-                          onChange={(e) => setNewActDuration(Number(e.target.value))}
-                          className="w-full px-2.5 py-1.5 rounded hud-card border hud-border text-xs hud-text focus:outline-none focus:border-primary"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowAddForm(false)}
-                        className="px-3 py-1 rounded hud-card text-[11px] hud-text-muted"
-                      >
-                        Batal
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAddCustomActivity}
-                        className="px-3 py-1 rounded hud-hero-bg text-[11px] font-bold text-black dark:text-black"
-                      >
-                        Simpan Aktivitas
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Checked activities list */}
-                <div className="space-y-1.5">
-                  {activities.map((act) => (
-                    <div
-                      key={act.id}
-                      className={`flex items-center justify-between p-2 rounded border transition-all ${
-                        act.checked
-                          ? "hud-card-high border-primary/50 hud-text"
-                          : "hud-card-inner hud-border text-outline"
-                      }`}
-                    >
-                      <div 
-                        onClick={() => toggleActivity(act.id)}
-                        className="flex items-center gap-2.5 flex-1 cursor-pointer"
-                      >
-                        {act.checked ? (
-                          <CheckSquare className="w-4 h-4 text-primary shrink-0" />
-                        ) : (
-                          <Square className="w-4 h-4 text-outline shrink-0" />
-                        )}
-                        <div>
-                          <span className={`font-bold block ${act.checked ? "hud-text" : "line-through text-outline"}`}>
-                            {act.activity_name}
-                          </span>
-                          <span className="text-[10px] text-outline block">
-                            {act.frequency_per_week}x/minggu • {act.duration_minutes} mnt • Intensitas: {act.intensity}
-                          </span>
-                        </div>
-                      </div>
-
-                      {act.id.startsWith("custom-") && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteActivity(act.id)}
-                          className="text-red-400 hover:text-red-300 p-1"
-                          title="Hapus"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full hud-clip-chamfer hud-hero-bg py-3.5 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-xl hover:opacity-90 disabled:opacity-50 mt-5 cursor-pointer"
+                className="w-full min-h-[44px] hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-xl hover:opacity-90 disabled:opacity-50 mt-5 cursor-pointer text-black"
               >
                 {loading ? (
                   <span>MENGHITUNG TDEE METABOLISME...</span>
@@ -764,191 +617,308 @@ export default function ProfilePage() {
           </div>
 
           {/* Real-time TDEE Telemetry Card (Cols 8-12) */}
-          <div className="lg:col-span-5 space-y-6">
-            <div className="hud-card border rounded p-5 relative shadow-lg theme-transition">
-              <div className="flex items-center justify-between border-b hud-border pb-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <Flame className="w-5 h-5 hud-hero-text" />
-                  <h2 className="font-display text-sm font-bold hud-text uppercase">
-                    RADAR KALKULASI TDEE
-                  </h2>
-                </div>
-                <span className="font-mono text-[10px] hud-beam-text border hud-border px-1.5 py-0.5 rounded hud-card-inner font-bold">
-                  MIFFLIN-ST JEOR
+          <div className="lg:col-span-5 hud-card border rounded-lg p-5 relative shadow-lg theme-transition space-y-4 min-w-0">
+            <div className="flex items-center justify-between border-b hud-border pb-3">
+              <div className="flex items-center gap-2">
+                <Flame className="w-5 h-5 hud-hero-text shrink-0" />
+                <h2 className="font-display text-sm font-bold hud-text uppercase">
+                  RADAR KALKULASI TDEE
+                </h2>
+              </div>
+              <span className="font-mono text-[10px] hud-beam-text border hud-border px-1.5 py-0.5 rounded hud-card-inner font-bold">
+                MIFFLIN-ST JEOR
+              </span>
+            </div>
+
+            <div className="space-y-3 font-mono text-xs">
+              <div className="p-3 hud-card-inner rounded border hud-border flex items-center justify-between">
+                <span className="hud-text-muted">BMR INTI (Basal):</span>
+                <span className="hud-text font-bold text-sm">{tdeeResult.bmr} kcal/hari</span>
+              </div>
+
+              <div className="p-3 hud-card-inner rounded border hud-border flex items-center justify-between">
+                <span className="hud-text-muted">FAKTOR PAL:</span>
+                <span className="hud-sub-text font-bold">{tdeeResult.pal_factor}x</span>
+              </div>
+
+              <div className="p-4 hud-card-high rounded border hud-border text-center">
+                <span className="text-[11px] hud-text-muted block uppercase mb-1">
+                  TOTAL ESTIMASI TDEE HARIAN
                 </span>
-              </div>
-
-              <div className="space-y-3 font-mono text-xs">
-                <div className="p-3 hud-card-inner rounded border hud-border flex items-center justify-between">
-                  <span className="hud-text-muted">BMR INTI (Basal):</span>
-                  <span className="hud-text font-bold text-sm">{tdeeResult.bmr} kcal/hari</span>
-                </div>
-
-                <div className="p-3 hud-card-inner rounded border hud-border flex items-center justify-between">
-                  <span className="hud-text-muted">FAKTOR PAL:</span>
-                  <span className="hud-sub-text font-bold">{tdeeResult.pal_factor}x</span>
-                </div>
-
-                <div className="p-4 hud-card-high rounded border hud-border text-center">
-                  <span className="text-[11px] hud-text-muted block uppercase mb-1">
-                    TOTAL ESTIMASI TDEE HARIAN
-                  </span>
-                  <span className="font-display text-3xl font-bold hud-hero-text">
-                    {tdeeResult.tdee}
-                  </span>
-                  <span className="font-mono text-xs text-outline block">KCAL / HARI</span>
-                </div>
-              </div>
-
-              {/* Target Splits Preview */}
-              <div className="mt-4 pt-3 border-t hud-border space-y-2 font-mono text-[11px]">
-                <span className="text-outline uppercase block text-[10px]">PREVIEW PROGRAM TARGET:</span>
-                <div className="flex justify-between p-2 rounded hud-card-inner border hud-border">
-                  <span className="hud-text-muted">Cutting (-20%):</span>
-                  <span className="hud-hero-text font-bold">{tdeeResult.targets.cutting} kcal</span>
-                </div>
-                <div className="flex justify-between p-2 rounded hud-card-inner border hud-border">
-                  <span className="hud-text-muted">Maintenance (0%):</span>
-                  <span className="hud-beam-text font-bold">{tdeeResult.targets.maintenance} kcal</span>
-                </div>
-                <div className="flex justify-between p-2 rounded hud-card-inner border hud-border">
-                  <span className="hud-text-muted">Bulking (+15%):</span>
-                  <span className="hud-sub-text font-bold">{tdeeResult.targets.bulking} kcal</span>
-                </div>
-              </div>
-
-              <div className="mt-4 pt-2 text-[10px] text-outline font-mono">
-                * Formula deterministik sesuai ADR-2. Bebas halusinasi aritmatika AI.
+                <span className="font-display text-3xl font-bold hud-hero-text">
+                  {tdeeResult.tdee}
+                </span>
+                <span className="font-mono text-xs text-outline block">KCAL / HARI</span>
               </div>
             </div>
 
-            {/* Quick Link to Custom Activities */}
-            <div className="hud-card border rounded p-4 font-mono text-xs flex items-center justify-between">
-              <div>
-                <span className="hud-text font-bold block">Aktivitas Kustom</span>
-                <span className="text-[10px] text-outline block">Tambah hobi & latihan spesifik</span>
+            {/* Target Splits Preview */}
+            <div className="pt-3 border-t hud-border space-y-2 font-mono text-[11px]">
+              <span className="text-outline uppercase block text-[10px]">PREVIEW PROGRAM TARGET:</span>
+              <div className="flex justify-between p-2 rounded hud-card-inner border hud-border">
+                <span className="hud-text-muted">Cutting (-20%):</span>
+                <span className="hud-hero-text font-bold">{tdeeResult.targets.cutting} kcal</span>
               </div>
-              <Link
-                href="/activities"
-                className="px-3 py-1.5 rounded hud-card-inner border hud-border hud-beam-text hover:border-primary transition-colors font-bold"
-              >
-                + ATUR AKTIVITAS
-              </Link>
+              <div className="flex justify-between p-2 rounded hud-card-inner border hud-border">
+                <span className="hud-text-muted">Maintenance (0%):</span>
+                <span className="hud-beam-text font-bold">{tdeeResult.targets.maintenance} kcal</span>
+              </div>
+              <div className="flex justify-between p-2 rounded hud-card-inner border hud-border">
+                <span className="hud-text-muted">Bulking (+15%):</span>
+                <span className="hud-sub-text font-bold">{tdeeResult.targets.bulking} kcal</span>
+              </div>
             </div>
 
-            {/* AI Engine & Live Diagnostics Card (Requirement 7: Cek AI) */}
-            <div className="hud-card border rounded p-5 relative shadow-lg theme-transition space-y-3">
-              <div className="flex items-center justify-between border-b hud-border pb-3">
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-5 h-5 text-amber-400" />
-                  <h2 className="font-display text-sm font-bold hud-text uppercase">
-                    ENGINE AI & CEK KESIAPAN
-                  </h2>
-                </div>
-                <span className="font-mono text-[9px] px-2 py-0.5 rounded hud-card-inner border hud-border hud-beam-text font-bold uppercase">
-                  {getGeminiModelById(selectedModel).badge} • {getGeminiModelById(selectedModel).provider.toUpperCase()}
-                </span>
-              </div>
-
-              <p className="font-mono text-xs text-outline leading-relaxed">
-                Pilih model kecerdasan buatan untuk pemindaian nutrisi dan perancangan menu makan (Google Gemini, OpenAI, atau DeepSeek), serta periksa kesiapan koneksi API secara live.
-              </p>
-
-              {/* Model Select grouped by Provider */}
-              <div className="space-y-2 font-mono text-xs">
-                <label className="text-outline uppercase text-[10px] block">Pilih Model Aktif:</label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => handleModelChange(e.target.value)}
-                  className="w-full px-3 py-2 rounded hud-card-inner border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary cursor-pointer"
-                >
-                  <optgroup label="GOOGLE GEMINI SERIES (DEFAULT)" className="bg-slate-900 text-cyan-400 font-bold">
-                    {GEMINI_MODELS.filter(m => m.provider === "google").map((m) => (
-                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-normal">
-                        {m.label} — {m.badge}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="OPENAI SERIES" className="bg-slate-900 text-emerald-400 font-bold">
-                    {GEMINI_MODELS.filter(m => m.provider === "openai").map((m) => (
-                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-normal">
-                        {m.label} — {m.badge}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="DEEPSEEK SERIES" className="bg-slate-900 text-blue-400 font-bold">
-                    {GEMINI_MODELS.filter(m => m.provider === "deepseek").map((m) => (
-                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-normal">
-                        {m.label} — {m.badge}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-
-                <div className="p-2.5 rounded hud-card-inner border hud-border text-[11px] space-y-1.5">
-                  <span className="text-slate-300 block leading-relaxed">{getGeminiModelById(selectedModel).description}</span>
-                  {aiHealth.env_keys_status?.[getGeminiModelById(selectedModel).envKeyName] ? (
-                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono pt-1 border-t hud-border">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span>Variabel Vercel Terhubung: <strong>{getGeminiModelById(selectedModel).envKeyName}</strong> (Aktif)</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono pt-1 border-t hud-border">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
-                      <span>Target Variabel Vercel: <strong className="text-slate-200">{getGeminiModelById(selectedModel).envKeyName}</strong></span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Cek AI Button */}
-              <button
-                type="button"
-                onClick={() => checkAiHealth()}
-                disabled={aiHealth.checking}
-                className="w-full py-2 px-3 rounded hud-card-high border border-primary/50 hover:border-primary font-mono text-xs hud-hero-text font-bold uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${aiHealth.checking ? "animate-spin" : ""}`} />
-                <span>{aiHealth.checking ? "MENGECEK RESPONS AI..." : "CEK STATUS KONEKSI AI"}</span>
-              </button>
-
-              {/* Health Result */}
-              {aiHealth.status && (
-                <div className={`p-3 rounded font-mono text-xs space-y-1.5 transition-all ${
-                  aiHealth.status === "online"
-                    ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-300"
-                    : aiHealth.status === "rate_limited"
-                    ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
-                    : aiHealth.status === "no_key"
-                    ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
-                    : "bg-red-500/10 border border-red-500/40 text-red-300"
-                }`}>
-                  <div className="flex items-center justify-between font-bold">
-                    <div className="flex items-center gap-2">
-                      {aiHealth.status === "online" && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                      {aiHealth.status === "rate_limited" && <AlertTriangle className="w-4 h-4 text-amber-400" />}
-                      {aiHealth.status === "error" && <AlertCircle className="w-4 h-4 text-red-400" />}
-                      {aiHealth.status === "no_key" && <ShieldAlert className="w-4 h-4 text-amber-400" />}
-                      <span>
-                        {aiHealth.status === "online" && "AI AKTIF & SIAP DIGUNAKAN"}
-                        {aiHealth.status === "rate_limited" && "BATAS KUOTA AI TERCAPAI"}
-                        {aiHealth.status === "error" && "AI TIDAK DAPAT DIAKSES"}
-                        {aiHealth.status === "no_key" && `API KEY ${getGeminiModelById(selectedModel).envKeyName} BELUM TERDETEKSI`}
-                      </span>
-                    </div>
-                    {aiHealth.latency_ms !== undefined && (
-                      <span className="text-[10px] font-mono opacity-80">{aiHealth.latency_ms}ms</span>
-                    )}
-                  </div>
-                  {aiHealth.message && (
-                    <p className="text-[11px] opacity-90 leading-tight">{aiHealth.message}</p>
-                  )}
-                </div>
-              )}
+            <div className="pt-2 text-[10px] text-outline font-mono">
+              * Formula deterministik sesuai ADR-2. Bebas halusinasi aritmatika AI.
             </div>
           </div>
 
         </div>
+
+        {/* BAGIAN 2: RINGKASAN AKTIVITAS FISIK & JADWAL LATIHAN */}
+        <div className="hud-card border rounded-lg p-4 sm:p-6 relative shadow-lg theme-transition space-y-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b hud-border gap-3">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-cyan-400 shrink-0" />
+              <div>
+                <h2 className="font-display text-sm sm:text-base font-bold hud-text uppercase">
+                  RINGKASAN AKTIVITAS FISIK & JADWAL LATIHAN
+                </h2>
+                <span className="text-[10px] text-outline font-mono block">
+                  Jadwal rutin mingguan yang memengaruhi perhitungan metabolisme dan rekomendasi AI
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="min-h-[44px] px-3 py-2 rounded hud-card-high border hud-border text-primary font-mono text-xs font-bold flex items-center gap-1.5 hover:bg-primary/10 transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ TAMBAH AKTIVITAS</span>
+              </button>
+              
+              <Link
+                href="/activities"
+                className="min-h-[44px] px-3 py-2 rounded hud-card-inner border hud-border hud-beam-text hover:border-primary transition-colors font-mono text-xs font-bold flex items-center gap-1.5"
+              >
+                <span>ATUR DI MENU AKTIVITAS</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Inline Add Custom Activity Form */}
+          {showAddForm && (
+            <div className="p-4 rounded hud-card-inner border hud-border space-y-3 bg-primary/5">
+              <div className="font-bold font-mono text-xs hud-hero-text">INPUT AKTIVITAS BARU:</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                <div>
+                  <span className="text-[10px] text-outline block mb-1">Nama Aktivitas:</span>
+                  <input
+                    type="text"
+                    value={newActName}
+                    onChange={(e) => setNewActName(e.target.value)}
+                    placeholder="e.g. Futsal, Muay Thai, Pilates"
+                    className="w-full min-h-[44px] px-3 py-2 rounded hud-card border hud-border text-base sm:text-xs hud-text focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-outline block mb-1">Intensitas:</span>
+                  <select
+                    value={newActIntensity}
+                    onChange={(e) => setNewActIntensity(e.target.value as any)}
+                    className="w-full min-h-[44px] px-3 py-2 rounded hud-card border hud-border text-base sm:text-xs hud-text focus:outline-none focus:border-primary"
+                  >
+                    <option value="low">Ringan (Low)</option>
+                    <option value="moderate">Sedang (Moderate)</option>
+                    <option value="high">Tinggi (High)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 font-mono text-xs">
+                <div>
+                  <span className="text-[10px] text-outline block mb-1">Frekuensi / Minggu:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={7}
+                    value={newActFreq}
+                    onChange={(e) => setNewActFreq(Number(e.target.value))}
+                    className="w-full min-h-[44px] px-3 py-2 rounded hud-card border hud-border text-base sm:text-xs hud-text focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-outline block mb-1">Durasi (Menit):</span>
+                  <input
+                    type="number"
+                    min={10}
+                    max={240}
+                    value={newActDuration}
+                    onChange={(e) => setNewActDuration(Number(e.target.value))}
+                    className="w-full min-h-[44px] px-3 py-2 rounded hud-card border hud-border text-base sm:text-xs hud-text focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 font-mono text-xs">
+                <button
+                  type="button"
+                  onClick={() => setShowAddForm(false)}
+                  className="min-h-[44px] px-4 py-2 rounded hud-card text-xs hud-text-muted hover:hud-text"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddCustomActivity}
+                  className="min-h-[44px] px-4 py-2 rounded hud-hero-bg text-xs font-bold text-black"
+                >
+                  Simpan Aktivitas
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Checked activities list */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 font-mono text-xs">
+            {activities.map((act) => (
+              <div
+                key={act.id}
+                className={`flex items-center justify-between p-3 rounded border transition-all min-h-[44px] ${
+                  act.checked
+                    ? "hud-card-high border-primary/50 hud-text"
+                    : "hud-card-inner hud-border text-outline"
+                }`}
+              >
+                <div 
+                  onClick={() => toggleActivity(act.id)}
+                  className="flex items-center gap-3 flex-1 cursor-pointer min-h-[44px]"
+                >
+                  {act.checked ? (
+                    <CheckSquare className="w-4 h-4 text-primary shrink-0" />
+                  ) : (
+                    <Square className="w-4 h-4 text-outline shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <span className={`font-bold block truncate text-xs ${act.checked ? "hud-text" : "line-through text-outline"}`}>
+                      {act.activity_name}
+                    </span>
+                    <span className="text-[10px] text-outline block truncate">
+                      {act.frequency_per_week}x/minggu • {act.duration_minutes} mnt • {act.intensity}
+                    </span>
+                  </div>
+                </div>
+
+                {act.id.startsWith("custom-") && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteActivity(act.id)}
+                    className="text-red-400 hover:text-red-300 min-h-[44px] min-w-[44px] flex items-center justify-center p-2"
+                    title="Hapus"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* BAGIAN 3: MANAJEMEN API KEY AI PRIBADI (BYOK) */}
+        <ApiKeysCard />
+
+        {/* BAGIAN 4: ENGINE AI & CEK KESIAPAN KONEKSI */}
+        <div className="hud-card border rounded-lg p-4 sm:p-6 relative shadow-lg theme-transition space-y-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b hud-border pb-3 gap-2">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-amber-400 shrink-0" />
+              <h2 className="font-display text-sm sm:text-base font-bold hud-text uppercase">
+                ENGINE AI & CEK KESIAPAN KONEKSI
+              </h2>
+            </div>
+            <span className="font-mono text-[10px] px-2.5 py-1 rounded hud-card-inner border hud-border hud-beam-text font-bold uppercase self-start sm:self-auto">
+              {getGeminiModelById(selectedModel).badge} • {getGeminiModelById(selectedModel).provider.toUpperCase()}
+            </span>
+          </div>
+
+          <p className="font-mono text-xs text-outline leading-relaxed">
+            Pilih model kecerdasan buatan untuk pemindaian nutrisi dan perancangan menu makan (Google Gemini, OpenAI, DeepSeek, atau Groq), serta periksa kesiapan koneksi API secara live.
+          </p>
+
+          {/* Model Select grouped by Provider with Key Status */}
+          <ModelSelector
+            value={selectedModel}
+            onChange={handleModelChange}
+            label="PILIH MODEL AKTIF"
+          />
+
+          {/* Cek AI Button */}
+          <button
+            type="button"
+            onClick={() => checkAiHealth()}
+            disabled={aiHealth.checking}
+            className="w-full min-h-[44px] py-2.5 px-4 rounded hud-card-high border border-primary/50 hover:border-primary font-mono text-xs hud-hero-text font-bold uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${aiHealth.checking ? "animate-spin" : ""}`} />
+            <span>{aiHealth.checking ? "MENGECEK RESPONS AI..." : "CEK STATUS KONEKSI AI"}</span>
+          </button>
+
+          {/* Health Result */}
+          {aiHealth.status && (
+            <div className={`p-3.5 rounded font-mono text-xs space-y-1.5 transition-all ${
+              aiHealth.status === "online"
+                ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-300"
+                : aiHealth.status === "rate_limited"
+                ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
+                : aiHealth.status === "no_key"
+                ? "bg-amber-500/10 border border-amber-500/40 text-amber-300"
+                : "bg-red-500/10 border border-red-500/40 text-red-300"
+            }`}>
+              <div className="flex items-center justify-between font-bold">
+                <div className="flex items-center gap-2">
+                  {aiHealth.status === "online" && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+                  {aiHealth.status === "rate_limited" && <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />}
+                  {aiHealth.status === "error" && <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
+                  {aiHealth.status === "no_key" && <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />}
+                  <span>
+                    {aiHealth.status === "online" && "AI AKTIF & SIAP DIGUNAKAN"}
+                    {aiHealth.status === "rate_limited" && "BATAS KUOTA AI TERCAPAI"}
+                    {aiHealth.status === "error" && "AI TIDAK DAPAT DIAKSES"}
+                    {aiHealth.status === "no_key" && `API KEY ${getGeminiModelById(selectedModel).envKeyName} BELUM TERDETEKSI`}
+                  </span>
+                </div>
+                {aiHealth.latency_ms !== undefined && (
+                  <span className="text-[10px] font-mono opacity-80">{aiHealth.latency_ms}ms</span>
+                )}
+              </div>
+              {aiHealth.message && (
+                <p className="text-[11px] opacity-90 leading-tight">{aiHealth.message}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* BAGIAN 5: TOMBOL NAVIGASI KEMBALI KE DASHBOARD & PROGRAM */}
+        <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-xs">
+          <Link
+            href="/"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-2.5 rounded hud-card-inner border hud-border hover:border-primary text-slate-200 hover:text-white transition-all font-bold"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>KEMBALI KE DASHBOARD UTAMA</span>
+          </Link>
+          <Link
+            href="/program"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-2.5 rounded hud-hero-bg text-black font-bold transition-all shadow-md hover:opacity-90"
+          >
+            <span>LIHAT PROGRAM NUTRISI & HASIL</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+
       </main>
 
       <TacticalFooter />

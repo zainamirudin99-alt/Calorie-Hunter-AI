@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { calculateRemainingCalories } from "@/lib/tdee/calculator";
 import { useSelectedAiModel, GEMINI_MODELS } from "@/lib/gemini/models";
+import { ModelSelector } from "@/components/ai/model-selector";
 
 function getProceduralCompanionSvg(name: string, isUltraman: boolean): string {
   const primaryColor = isUltraman ? "#ef4444" : "#06b6d4";
@@ -456,37 +457,37 @@ export default function DashboardPage() {
       <TelemetryTicker />
 
       {/* Main HUD Viewport: Responsive 3-Column Command Center */}
-      <main className="flex-1 w-full max-w-[1920px] mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8 space-y-5 sm:space-y-6">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 min-w-0 space-y-5 sm:space-y-6">
         
         {/* Dashboard Progress Title Header */}
-        <div className="hud-card border rounded p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg border-primary/30">
-          <div>
+        <div className="hud-card border rounded p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg border-primary/30 min-w-0">
+          <div className="min-w-0">
             <span className="font-display text-base sm:text-lg font-bold hud-hero-text uppercase tracking-wide flex items-center gap-2">
-              <Sparkles className="w-5 h-5" />
-              MENU DASHBOARD & GRAFIK PROGRESS HARIAN
+              <Sparkles className="w-5 h-5 shrink-0" />
+              <span>MENU DASHBOARD & GRAFIK PROGRESS HARIAN</span>
             </span>
-            <p className="font-mono text-xs hud-text-muted mt-0.5">
+            <p className="font-mono text-xs hud-text-muted mt-0.5 break-words">
               Pantau kepatuhan defisit/surplus kalori, persebaran makronutrisi, tren berat badan, dan status bio-resonansi familiar Anda.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => fetchDashboardSummary(false)}
               disabled={isDashboardSyncing}
-              className="py-2 px-3 sm:px-3.5 rounded hud-card-inner border hud-border hover:border-primary/60 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 text-slate-300 hover:text-white disabled:opacity-50 flex-1 sm:flex-initial cursor-pointer shadow-sm"
+              className="min-h-[44px] py-2 px-3 sm:px-3.5 rounded hud-card-inner border hud-border hover:border-primary/60 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 text-slate-300 hover:text-white disabled:opacity-50 flex-1 sm:flex-initial cursor-pointer shadow-sm"
               title="Segarkan data terbaru dari database cloud"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isDashboardSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isDashboardSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
               <span>{isDashboardSyncing ? "MENYINKRONKAN..." : "SINKRONKAN CLOUD"}</span>
             </button>
             <Link
               href="/scanner"
-              className="hud-clip-chamfer hud-hero-bg py-2 px-3.5 sm:px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow hover:opacity-90 flex-1 sm:flex-initial text-black dark:text-black"
+              className="min-h-[44px] hud-clip-chamfer hud-hero-bg py-2 px-3.5 sm:px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow hover:opacity-90 flex-1 sm:flex-initial text-black dark:text-black"
             >
               <span>BUKA TRACKING</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-4 h-4 shrink-0" />
             </Link>
           </div>
         </div>
@@ -496,7 +497,7 @@ export default function DashboardPage() {
         {/* ========================================================================= */}
         {/* COLUMN 1: HUNTER VITALITY & COMPANION (Cols 1-4)                          */}
         {/* ========================================================================= */}
-        <section className="col-span-1 md:col-span-2 lg:col-span-4 flex flex-col gap-6">
+        <section className="col-span-1 md:col-span-2 lg:col-span-4 flex flex-col gap-6 min-w-0">
           
           {/* CYBER MONSTER COMPANION CARD */}
           <div className="relative hud-card border rounded p-5 overflow-hidden group shadow-lg theme-transition">
@@ -741,7 +742,7 @@ export default function DashboardPage() {
         {/* ========================================================================= */}
         {/* COLUMN 2: DAILY VS TARGET ANALYTICS & WEIGHT TREND (Cols 5-8)             */}
         {/* ========================================================================= */}
-        <section className="col-span-1 md:col-span-2 lg:col-span-4 flex flex-col gap-6">
+        <section className="col-span-1 md:col-span-2 lg:col-span-4 flex flex-col gap-6 min-w-0">
           
           {/* RECHARTS: KALORI HARIAN VS TARGET */}
           <div className="hud-card border rounded p-5 relative shadow-lg theme-transition">
@@ -839,7 +840,7 @@ export default function DashboardPage() {
         {/* ========================================================================= */}
         {/* COLUMN 3: DAILY HUNTING LOG & ACTIVE QUESTS (Cols 9-12)                   */}
         {/* ========================================================================= */}
-        <section className="col-span-1 md:col-span-2 lg:col-span-4 flex flex-col gap-6">
+        <section className="col-span-1 md:col-span-2 lg:col-span-4 flex flex-col gap-6 min-w-0">
           
           {/* LOG RANSUM TEMPUR */}
           <div className="hud-card border rounded p-5 shadow-lg theme-transition">
@@ -1030,23 +1031,25 @@ export default function DashboardPage() {
 
       {/* COMPANION CHARACTER CUSTOMIZATION MODAL */}
       {isCompanionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="hud-card border rounded-lg p-5 sm:p-6 max-w-lg w-full shadow-2xl relative border-primary/50">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="hud-card border rounded-t-2xl sm:rounded-lg p-5 sm:p-6 max-w-lg w-full shadow-2xl relative border-primary/50 max-h-[85vh] overflow-y-auto min-w-0">
             <button
+              type="button"
               onClick={() => {
                 setIsCompanionModalOpen(false);
                 setCompanionStatusMsg(null);
               }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded hud-card-high border hud-border"
+              className="absolute top-4 right-4 text-slate-400 hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center rounded hud-card-high border hud-border cursor-pointer"
+              title="Tutup Modal"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 mb-4 border-b hud-border pb-3">
-              <Sparkles className="w-5 h-5 hud-hero-text" />
-              <div>
-                <h3 className="font-display text-base font-bold hud-text">KUSTOMISASI FAMILIAR COMPANION</h3>
-                <p className="font-mono text-[10px] text-outline">
+            <div className="flex items-center gap-2 mb-4 border-b hud-border pb-3 pr-10">
+              <Sparkles className="w-5 h-5 hud-hero-text shrink-0" />
+              <div className="min-w-0">
+                <h3 className="font-display text-base font-bold hud-text truncate">KUSTOMISASI FAMILIAR COMPANION</h3>
+                <p className="font-mono text-[10px] text-outline break-words">
                   Kustomisasi visual monster bio-mech / ultra guardian pendamping Anda
                 </p>
               </div>
@@ -1060,13 +1063,13 @@ export default function DashboardPage() {
                   setCompanionEditMode("upload");
                   setCompanionStatusMsg(null);
                 }}
-                className={`py-2 px-3 rounded font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
+                className={`min-h-[44px] py-2 px-3 rounded font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all border cursor-pointer ${
                   companionEditMode === "upload"
                     ? "hud-hero-bg text-black border-primary"
                     : "hud-card-high hud-text-muted border-slate-700 hover:border-slate-500"
                 }`}
               >
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-3.5 h-3.5 shrink-0" />
                 <span>UPLOAD GAMBAR</span>
               </button>
 
@@ -1076,13 +1079,13 @@ export default function DashboardPage() {
                   setCompanionEditMode("ai");
                   setCompanionStatusMsg(null);
                 }}
-                className={`py-2 px-3 rounded font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
+                className={`min-h-[44px] py-2 px-3 rounded font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all border cursor-pointer ${
                   companionEditMode === "ai"
                     ? "hud-hero-bg text-black border-primary"
                     : "hud-card-high hud-text-muted border-slate-700 hover:border-slate-500"
                 }`}
               >
-                <Wand2 className="w-3.5 h-3.5" />
+                <Wand2 className="w-3.5 h-3.5 shrink-0" />
                 <span>GENERATE DENGAN AI</span>
               </button>
             </div>
@@ -1097,7 +1100,7 @@ export default function DashboardPage() {
                 value={customNameInput}
                 onChange={(e) => setCustomNameInput(e.target.value)}
                 placeholder="misal: VOLT-FANG, CYBER-REX, ULTRA-MECHA"
-                className="w-full hud-card-inner border hud-border rounded p-2.5 font-mono text-xs text-white focus:outline-none focus:border-primary"
+                className="w-full hud-card-inner border hud-border rounded p-2.5 font-mono text-base sm:text-xs text-white focus:outline-none focus:border-primary min-h-[44px]"
                 maxLength={40}
               />
             </div>
@@ -1134,7 +1137,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={handleSaveUploadedCompanion}
-                  className="w-full hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                  className="w-full min-h-[44px] hud-clip-chamfer hud-hero-bg py-2.5 px-4 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>SIMPAN & TERAPKAN GAMBAR</span>
@@ -1154,23 +1157,11 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Model AI Selector */}
-                  <div>
-                    <label className="block font-mono text-[11px] hud-text-muted mb-1 uppercase font-bold flex items-center gap-1.5">
-                      <Cpu className="w-3.5 h-3.5 hud-hero-text" />
-                      <span>PILIH MODEL AI GENERATOR</span>
-                    </label>
-                    <select
-                      value={selectedCompanionModel}
-                      onChange={(e) => setSelectedCompanionModel(e.target.value)}
-                      className="w-full hud-card border hud-border rounded p-2 font-mono text-xs text-white focus:outline-none focus:border-primary bg-slate-900 cursor-pointer"
-                    >
-                      {availableModels.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label} ({m.badge})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <ModelSelector
+                    value={selectedCompanionModel}
+                    onChange={(newId) => setSelectedCompanionModel(newId)}
+                    label="PILIH MODEL AI GENERATOR"
+                  />
 
                   {/* Character Description / Prompt Input */}
                   <div>
@@ -1182,7 +1173,7 @@ export default function DashboardPage() {
                       onChange={(e) => setCharacterDescInput(e.target.value)}
                       placeholder="misal: Serigala cyborg bermata laser biru bertaring plasma dengan armor titanium hitam..."
                       rows={3}
-                      className="w-full hud-card border hud-border rounded p-2 font-mono text-xs text-white focus:outline-none focus:border-primary resize-none"
+                      className="w-full hud-card border hud-border rounded p-2.5 font-mono text-base sm:text-xs text-white focus:outline-none focus:border-primary resize-none"
                     />
                     <p className="font-mono text-[10px] text-outline mt-1">
                       AI {availableModels.find((m) => m.id === selectedCompanionModel)?.shortName || "Multimodal"} akan memproses prompt dan hasilnya langsung otomatis diterapkan sebagai foto companion Anda.
@@ -1223,7 +1214,7 @@ export default function DashboardPage() {
                         setIsCompanionModalOpen(false);
                         setCompanionStatusMsg(null);
                       }}
-                      className="mt-2 text-xs px-3 py-1.5 rounded hud-card-high border hud-border hover:border-primary font-mono text-white inline-flex items-center gap-1.5"
+                      className="mt-2 min-h-[44px] text-xs px-4 py-2 rounded hud-card-high border hud-border hover:border-primary font-mono text-white inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                       <span>SELESAI & TUTUP</span>
@@ -1236,7 +1227,7 @@ export default function DashboardPage() {
                     type="button"
                     onClick={handleGenerateAiCompanion}
                     disabled={isGeneratingAi}
-                    className="w-full hud-clip-chamfer hud-hero-bg py-2.5 px-3 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg"
+                    className="w-full min-h-[44px] hud-clip-chamfer hud-hero-bg py-2.5 px-3 font-mono text-xs font-bold uppercase text-black hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg"
                   >
                     {isGeneratingAi ? (
                       <>

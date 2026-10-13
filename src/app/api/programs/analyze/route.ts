@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { gemini, PRIMARY_GEMINI_MODEL, resolveOfficialGeminiModel } from "@/lib/gemini/client";
-
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { calculateTDEE, getProgramNutrientRules } from "@/lib/tdee/calculator";
 import { ProgramType } from "@/types/database";
+import { resolveUserAiAccess } from "@/lib/ai/user-keys";
+import { callAI } from "@/lib/ai/adapter";
+import { AiError } from "@/lib/ai/types";
+
+export const runtime = "nodejs";
 
 const analyzeSchema = z.object({
   program_type: z.enum([
@@ -20,36 +23,30 @@ const analyzeSchema = z.object({
   ]),
 });
 
-const aiProgramAnalysisGeminiSchema = {
-  type: "OBJECT",
-  properties: {
-    program_type: { type: "STRING" },
-    feasibility_status: { type: "STRING" },
-    target_daily_kcal: { type: "NUMBER" },
-    weekly_projection: { type: "STRING" },
-    protein_strategy: { type: "STRING" },
-    macro_micro_policy: { type: "STRING" },
-    actionable_tactics: {
-      type: "ARRAY",
-      items: { type: "STRING" },
-    },
-    ai_verdict: { type: "STRING" },
-  },
-  required: [
-    "feasibility_status",
-    "target_daily_kcal",
-    "weekly_projection",
-    "protein_strategy",
-    "macro_micro_policy",
-    "actionable_tactics",
-    "ai_verdict",
-  ],
-};
+const aiProgramAnalysisZodSchema = z.object({
+  program_type: z.string().optional(),
+  feasibility_status: z.string(),
+  target_daily_kcal: z.number(),
+  weekly_projection: z.string(),
+  protein_strategy: z.string(),
+  macro_micro_policy: z.string(),
+  actionable_tactics: z.array(z.string()),
+  ai_verdict: z.string(),
+});
 
 export async function POST(req: Request) {
   try {
     const supabase = createServerClient(req);
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Sesi tidak valid atau telah berakhir." },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
     const parseResult = analyzeSchema.safeParse(body);
@@ -59,238 +56,103 @@ export async function POST(req: Request) {
 
     const { program_type } = parseResult.data;
 
-    // Load profile from DB or request
-    let profile: any = body.profile || null;
+    // Read selected model from query or cookie
+    const url = new URL(req.url);
+    const selectedModel = url.searchParams.get("model") || "gemini-3.8-flash";
 
-    if (user && !profile) {
-      const admin = createAdminClient();
-      const { data: p } = await admin.from("profiles").select("*").eq("id", user.id).maybeSingle();
-      if (p) profile = p;
+    // 1. BYOK Gatekeeper: Enforce user key access
+    let access;
+    try {
+      access = await resolveUserAiAccess(user.id, selectedModel);
+    } catch (err: unknown) {
+      if (err instanceof AiError) {
+        return NextResponse.json(err.toJSON(), {
+          status: err.code === "AI_KEY_REQUIRED" ? 403 : 400,
+        });
+      }
+      throw err;
     }
 
-    const weightKg = Number(profile?.weight_kg) || 75;
-    const heightCm = Number(profile?.height_cm) || 175;
-    const age = Number(profile?.age) || 25;
-    const gender = (profile?.gender as any) || "male";
-    const activityLevel = (profile?.activity_level as any) || "moderate";
+    const { selectedKey, availableKeys } = access;
 
+    // Fetch user profile and active program
+    const adminClient = createAdminClient();
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile) {
+      return NextResponse.json({ error: "Profil belum lengkap" }, { status: 400 });
+    }
+
+    // Calculate TDEE
     const tdeeResult = calculateTDEE({
-      weight_kg: weightKg,
-      height_cm: heightCm,
-      age,
-      gender,
-      activity_level: activityLevel,
+      weight_kg: Number(profile.weight_kg) || 70,
+      height_cm: Number(profile.height_cm) || 170,
+      age: profile.age || 25,
+      gender: profile.gender || "male",
+      activity_level: profile.activity_level || "moderate",
     });
 
-    const targetKcal = tdeeResult.targets[program_type] || tdeeResult.targets.cutting;
-    const rules = getProgramNutrientRules(program_type);
+    const targetKcal =
+      tdeeResult.targets[program_type as "cutting" | "bulking" | "maintenance"] ||
+      tdeeResult.tdee;
 
-    // Resolve selected Gemini model from body, cookie, or header
-    const cookieHeader = req.headers.get("cookie") || "";
-    const cookieModelMatch = cookieHeader.match(/(?:^|;\s*)chai_ai_model=([^;]+)/);
-    const selectedModel = body.model || (cookieModelMatch ? decodeURIComponent(cookieModelMatch[1]) : PRIMARY_GEMINI_MODEL);
+    const nutrientRules = getProgramNutrientRules(program_type as ProgramType);
 
-    const prompt = `
-Anda adalah Chief AI Tactical Nutritionist di Calorie Hunter AI ("${selectedModel}").
-Tugas Anda: Analisis kesesuaian biometrik Hunter berikut terhadap program yang dipilih:
-
-[DATA BIOMETRIK HUNTER]
-- Gender: ${gender === "male" ? "Pria" : "Wanita"}
-- Berat Badan: ${weightKg} kg
-- Tinggi Badan: ${heightCm} cm
-- Usia: ${age} tahun
-- Aktivitas Fisik: ${activityLevel}
-- BMR (Basal Metabolic Rate): ${tdeeResult.bmr} kcal
-- TDEE (Total Daily Energy Expenditure): ${tdeeResult.tdee} kcal
-
-[PROGRAM YANG DIPILIH]
-- Nama Program: ${rules.ruleTitle} (${program_type})
+    const prompt = `Anda adalah Lead Nutritionist AI militer dan biometrik untuk Calorie Hunter AI.
+Analisis data atlet/pengguna berikut:
+- Nama: ${profile.full_name || profile.username || "Hunter"}
+- Gender: ${profile.gender}, Usia: ${profile.age} tahun
+- Tinggi: ${profile.height_cm} cm, Berat: ${profile.weight_kg} kg
+- Level Aktivitas: ${profile.activity_level}
+- TDEE Baseline: ${tdeeResult.tdee} kcal
+- Program yang Dipilih: ${program_type.toUpperCase()}
 - Target Kalori Harian: ${targetKcal} kcal
-- Aturan Kepatuhan Nutrisi Khusus:
-  * Pelacakan Makro: ${rules.tracksMacros ? "Aktif" : "TIDAK MEMPERHATIKAN MAKRO (Bebas)"}
-  * Pelacakan Mikro (Sodium/Kalium/Vit C): ${rules.tracksMicros ? "Aktif & Ketat" : "TIDAK MEMPERHATIKAN MIKRO"}
-  * Kebijakan Protein Harian: ${rules.tracksProteinStrictly ? "WAJIB & KETAT untuk Build Muscle (" + rules.proteinTargetDesc + ")" : "Fleksibel / Tidak Di-enforce"}
-  * Ringkasan Aturan: ${rules.ruleDescription}
+- Aturan Gizi Program:
+  * Aturan: ${nutrientRules.ruleTitle} - ${nutrientRules.ruleDescription}
+  * Target Protein: ${nutrientRules.proteinTargetDesc}
+  * Badge: ${nutrientRules.badge}
 
 Berikan analisis mendalam dan objektif dalam Bahasa Indonesia taktis:
 1. Feasibility status (misal: "SANGAT IDEAL", "SIAP DIJALANKAN", "MEMBUTUHKAN DISIPLIN TINGGI").
-2. Estimasi proyeksi mingguan (misal: "Turun 0.4 - 0.7 kg lemak per minggu" atau "Naik 0.25 - 0.4 kg massa per minggu").
-3. Strategi protein harian khusus sesuai aturan program ini.
-4. Kebijakan makro/mikro sesuai aturan program ini.
-5. Tepat 3 tips taktis yang actionable (contoh: hidrasi, timing makan, strategi konsistensi).
-6. Kesimpulan vonis AI (AI verdict) singkat yang memotivasi hunter.
-`;
+2. Estimasi proyeksi mingguan (misal: "Turun 0.4 - 0.7 kg lemak per minggu").
+3. Strategi protein harian khusus.
+4. Kebijakan makro/mikro.
+5. Tepat 3 tips taktis yang actionable.
+6. Kesimpulan vonis AI (AI verdict) singkat.`;
 
-    let aiAnalysis: any = null;
-
-    // Multi-Provider Step 1: OpenAI Series (GPT-5.6 Luna, GPT-5 Thinking Mini)
-    if (selectedModel.startsWith("gpt-") && process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("placeholder")) {
-      try {
-        const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: selectedModel === "gpt-5-thinking-mini" ? "o3-mini" : "gpt-4o",
-            messages: [
-              {
-                role: "user",
-                content: `${prompt}\nOutput strictly valid JSON with format: {"program_type":"${program_type}","feasibility_status":"...","target_daily_kcal":${targetKcal},"weekly_projection":"...","protein_strategy":"...","macro_micro_policy":"...","actionable_tactics":["...","...","..."],"ai_verdict":"..."}`,
-              },
-            ],
-            response_format: { type: "json_object" },
-          }),
+    let aiAnalysis = null;
+    try {
+      const aiRes = await callAI({
+        provider: selectedKey.provider,
+        model: selectedModel,
+        apiKey: selectedKey.key,
+        baseUrl: selectedKey.baseUrl,
+        messages: [{ role: "user", content: prompt }],
+        schema: aiProgramAnalysisZodSchema,
+        availableKeys,
+      });
+      aiAnalysis = aiRes.data;
+    } catch (aiErr: unknown) {
+      if (aiErr instanceof AiError) {
+        return NextResponse.json(aiErr.toJSON(), {
+          status: aiErr.code === "AI_KEY_REQUIRED" ? 403 : 500,
         });
-
-        if (oaiRes.ok) {
-          const oaiData = await oaiRes.json();
-          const parsed = JSON.parse(oaiData.choices?.[0]?.message?.content || "{}");
-          if (parsed && parsed.feasibility_status) {
-            aiAnalysis = parsed;
-          }
-        }
-      } catch (oaiErr: any) {
-        console.warn(`[OpenAI ProgramAnalyze] Error with ${selectedModel}:`, oaiErr.message);
       }
-    }
-
-    // Multi-Provider Step 2: DeepSeek Series (DeepSeek-V4-Flash, DeepSeek-V4-Pro)
-    if (!aiAnalysis && selectedModel.startsWith("deepseek-") && process.env.DEEPSEEK_API_KEY && !process.env.DEEPSEEK_API_KEY.includes("placeholder")) {
-      try {
-        const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: selectedModel === "deepseek-v4-pro" ? "deepseek-reasoner" : "deepseek-chat",
-            messages: [
-              {
-                role: "user",
-                content: `${prompt}\nOutput strictly valid JSON with format: {"program_type":"${program_type}","feasibility_status":"...","target_daily_kcal":${targetKcal},"weekly_projection":"...","protein_strategy":"...","macro_micro_policy":"...","actionable_tactics":["...","...","..."],"ai_verdict":"..."}`,
-              },
-            ],
-            response_format: { type: "json_object" },
-          }),
-        });
-
-        if (dsRes.ok) {
-          const dsData = await dsRes.json();
-          const parsed = JSON.parse(dsData.choices?.[0]?.message?.content || "{}");
-          if (parsed && parsed.feasibility_status) {
-            aiAnalysis = parsed;
-          }
-        }
-      } catch (dsErr: any) {
-        console.warn(`[DeepSeek ProgramAnalyze] Error with ${selectedModel}:`, dsErr.message);
-      }
-    }
-
-    // Multi-Provider Step 3: Google Gemini Series with automated capacity cascade
-    if (!aiAnalysis && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("placeholder")) {
-      const officialModel = resolveOfficialGeminiModel(selectedModel);
-      const candidateModels = [
-        officialModel,
-        "gemini-3.8-flash",
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-3.1-pro-preview",
-      ].filter((m, i, arr) => arr.indexOf(m) === i);
-
-
-      for (const candidate of candidateModels) {
-        try {
-          const response = await gemini.models.generateContent({
-            model: candidate,
-            contents: [prompt],
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: aiProgramAnalysisGeminiSchema,
-            },
-          });
-
-          const text = response.text || "";
-          if (text) {
-            const parsed = JSON.parse(text);
-            if (parsed && parsed.feasibility_status) {
-              aiAnalysis = parsed;
-              break;
-            }
-          }
-        } catch (err: any) {
-          console.warn(`[Gemini ProgramAnalyze] Error with ${candidate}:`, err.message);
-        }
-      }
-    }
-
-    // High quality deterministic fallback matching the exact rules
-    if (!aiAnalysis) {
-      let projection = "Perubahan terukur 0.4 - 0.6 kg / minggu";
-      let proteinStrat = rules.proteinTargetDesc;
-      let policy = rules.ruleDescription;
-
-      if (program_type === "weight_loss") {
-        projection = "Penurunan berat badan agresif 0.6 - 0.9 kg / minggu";
-        proteinStrat = "Bebas, tidak ada target gram protein spesifik.";
-        policy = "Fokus 100% pada pematuhan defisit kalori; abaikan pembagian makro dan mikro.";
-      } else if (program_type === "loss_fat") {
-        projection = "Pembakaran lemak bertahap 0.4 - 0.7 kg / minggu";
-        proteinStrat = "Standar alami, tidak diwajibkan tinggi (fokus pembakaran lemak).";
-        policy = "Memantau kalori defisit dan makro umum tanpa tekanan protein.";
-      } else if (program_type === "loss_fat_build_muscle") {
-        projection = "Rekomposisi: Lemak berkurang ~0.4 kg/minggu, massa otot terlindungi/meningkat";
-        proteinStrat = `Wajib minimal ${Math.round(weightKg * 2.0)}g protein/hari (2.0g/kg BB) untuk memicu retensi otot maksimal.`;
-        policy = "Defisit kalori terkontrol dipadukan dengan target protein ketat.";
-      } else if (program_type === "gain_mass") {
-        projection = "Kenaikan berat badan cepat 0.5 - 0.8 kg / minggu";
-        proteinStrat = "Bebas, konsumsi kalori surplus dari makanan apa pun yang padat energi.";
-        policy = "Tidak memperhatikan mikro dan makro; yang terpenting surplus kalori harian tercapai.";
-      } else if (program_type === "gain_mass_build_muscle") {
-        projection = "Kenaikan massa otot optimal 0.3 - 0.5 kg / minggu minim lemak";
-        proteinStrat = `Target harian ${Math.round(weightKg * 1.8)}g protein/hari (1.8g/kg BB) untuk sintesis protein miofibril.`;
-        policy = "Surplus kalori terukur + proteksi protein harian.";
-      } else if (program_type === "lean_mass") {
-        projection = "Pertumbuhan massa murni atletik 0.2 - 0.35 kg / minggu";
-        proteinStrat = `Target ${Math.round(weightKg * 1.9)}g protein murni berkualitas tinggi.`;
-        policy = "Wajib memantau seluruh makro (P/C/F) dan mikronutrien (Sodium, Kalium, Vit C) secara ketat.";
-      }
-
-      aiAnalysis = {
-        program_type,
-        feasibility_status: "SANGAT IDEAL & TERVERIFIKASI",
-        target_daily_kcal: targetKcal,
-        weekly_projection: projection,
-        protein_strategy: proteinStrat,
-        macro_micro_policy: policy,
-        actionable_tactics: [
-          `Pastikan batas harian ${targetKcal} kcal menjadi komitmen mutlak selama 180 hari siklus program.`,
-          rules.tracksProteinStrictly
-            ? `Penuhi kuota protein sejak sarapan dan makan siang agar target build muscle tercapai tanpa menumpuk di malam hari.`
-            : `Konsumsi makanan secara teratur untuk menjaga kestabilan energi harian.`,
-          `Lakukan penimbangan berat badan di pagi hari setelah bangun tidur untuk telemetri yang konsisten.`,
-        ],
-        ai_verdict: `Berdasarkan biometrik ${weightKg}kg / ${heightCm}cm dengan TDEE ${tdeeResult.tdee} kcal, program ${rules.ruleTitle} sangat sesuai untuk mencapai target fisiologis Anda dengan aman dan terukur.`,
-      };
+      throw aiErr;
     }
 
     return NextResponse.json({
       success: true,
       analysis: aiAnalysis,
-      rules,
-      biometrics: {
-        weight_kg: weightKg,
-        height_cm: heightCm,
-        age,
-        gender,
-        tdee: tdeeResult.tdee,
-        bmr: tdeeResult.bmr,
-        target_kcal: targetKcal,
-      },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || "Gagal menganalisis program gizi" },
+      { status: 500 }
+    );
   }
 }

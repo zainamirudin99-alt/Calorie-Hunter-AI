@@ -32,6 +32,7 @@ interface TacticalSidebarProps {
 }
 
 import { GEMINI_MODELS, DEFAULT_MODEL_ID, sanitizeModelId } from "@/lib/gemini/models";
+import { ModelSelector } from "@/components/ai/model-selector";
 
 export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: TacticalSidebarProps = {}) {
   const pathname = usePathname();
@@ -220,27 +221,32 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
     },
   ];
 
-  if (!isOpen) return null;
+  const isAuthPage = pathname === "/auth" || pathname === "/login";
+  if (isAuthPage) return null;
 
   return (
     <>
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[99] transition-opacity duration-300"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      {/* Backdrop for Mobile Drawer */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[99] lg:hidden transition-opacity duration-300"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
 
-      {/* Slide-over Tactical Drawer */}
+      {/* Slide-over Tactical Drawer on Mobile (<1024px) & Persistent Left Sidebar on Desktop (>=1024px) */}
       <aside 
         aria-label="Tactical Command Deck"
-        className="fixed top-0 left-0 bottom-0 w-88 max-w-[90vw] hud-card border-r hud-border z-[100] flex flex-col p-5 shadow-2xl theme-transition animate-in slide-in-from-left duration-200 overflow-y-auto"
+        className={`fixed top-0 left-0 bottom-0 w-72 max-w-[85vw] hud-card border-r hud-border z-[100] lg:z-40 flex flex-col p-4 sm:p-5 shadow-2xl lg:shadow-none theme-transition overflow-y-auto overflow-x-hidden transition-transform duration-300 ${
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
       >
         {/* Sidebar Header with custom sidebar icon */}
         <div className="flex items-center justify-between pb-4 border-b hud-border shrink-0">
           <div className="flex items-center gap-3">
             {/* Prominent Sidebar Crest using sidebar icon.png */}
-            <div className="relative w-12 h-12 rounded-xl hud-card-high border-2 border-primary/40 flex items-center justify-center p-1 shadow-lg group shrink-0 overflow-hidden">
+            <div className="relative w-10 h-10 lg:w-12 lg:h-12 rounded-xl hud-card-high border-2 border-primary/40 flex items-center justify-center p-1 shadow-lg group shrink-0 overflow-hidden">
               <Image
                 src="/sidebar-icon.png"
                 alt="Tactical Command Emblem"
@@ -266,7 +272,7 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded hud-card-inner border hud-border flex items-center justify-center hud-text-muted hover:hud-hero-text transition-colors cursor-pointer"
+            className="w-9 h-9 rounded hud-card-inner border hud-border flex items-center justify-center hud-text-muted hover:hud-hero-text transition-colors cursor-pointer lg:hidden"
             title="Tutup Navigasi Taktis"
             aria-label="Tutup Navigasi"
           >
@@ -286,8 +292,12 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={onClose}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-lg font-mono text-xs uppercase tracking-wider transition-all border ${
+                onClick={() => {
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    onClose();
+                  }
+                }}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg font-mono text-xs uppercase tracking-wider transition-all border min-h-[44px] ${
                   isActive
                     ? "hud-hero-bg border-transparent font-bold shadow-md"
                     : "hud-card-inner border-transparent hud-text-muted hover:border-primary/40 hover:hud-text"
@@ -317,18 +327,13 @@ export function TacticalSidebar({ isOpen: propIsOpen, onClose: propOnClose }: Ta
             </span>
           </div>
 
-          {/* Model Selector Dropdown */}
-          <select
+          {/* Model Selector Dropdown with Key Status Check */}
+          <ModelSelector
+            compact
             value={selectedModel}
-            onChange={(e) => handleModelChange(e.target.value)}
-            className="w-full px-2.5 py-1.5 rounded hud-card-high border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary cursor-pointer"
-          >
-            {GEMINI_MODELS.map((m) => (
-              <option key={m.id} value={m.id} className="bg-slate-900 text-white">
-                {m.label}
-              </option>
-            ))}
-          </select>
+            onChange={handleModelChange}
+            className="w-full"
+          />
 
           {/* Cek AI Button & Status */}
           <div className="flex items-center gap-2">

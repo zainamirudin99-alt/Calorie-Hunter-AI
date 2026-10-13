@@ -46,6 +46,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    if (program && program.end_date) {
+      const isPastEndDate = new Date() > new Date(program.end_date);
+      if (isPastEndDate && program.status === "active") {
+        program.status = "expired";
+        // Asynchronously sync to database
+        admin.from("programs").update({ status: "expired" }).eq("id", program.id).then();
+      }
+    }
+
     return NextResponse.json({ program });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

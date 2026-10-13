@@ -160,38 +160,39 @@ export default function ActivitiesPage() {
       <TacticalHeader activeTab="activities" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 mb-6 border-b hud-border">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 min-w-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 mb-6 border-b hud-border min-w-0">
+          <div className="flex items-center gap-3 min-w-0 w-full max-w-full">
+            <div className="w-10 h-10 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text shrink-0">
               <Activity className="w-5 h-5" />
             </div>
-            <div>
-              <h1 className="font-display text-base font-bold hud-text uppercase">
+            <div className="min-w-0 flex-1">
+              <h1 className="font-display text-base sm:text-lg font-bold hud-text uppercase truncate">
                 LOG AKTIVITAS & HOBI MINGGUAN
               </h1>
-              <span className="font-mono text-[10px] text-outline uppercase block">
+              <span className="font-mono text-[10px] text-outline uppercase block truncate">
                 {isUltraman ? "SCIENCE PATROL COMBAT SCHEDULE" : "TITAN TRAINING DECK"}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => fetchActivities(false)}
               disabled={isActSyncing}
-              className="py-2 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-xs font-bold uppercase transition-all flex items-center gap-1.5 text-slate-300 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
+              className="flex-1 sm:flex-none min-h-[44px] py-2 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 text-slate-300 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
               title="Sinkronkan aktivitas tersimpan dari database Cloud"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isActSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+              <RefreshCw className={`w-4 h-4 shrink-0 ${isActSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
               <span>{isActSyncing ? "MENYINKRONKAN..." : "SINKRONKAN CLOUD"}</span>
             </button>
             <button
+              type="button"
               onClick={() => setShowAddForm(!showAddForm)}
-              className="hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center gap-1.5 shadow-md hover:opacity-90 cursor-pointer"
+              className="flex-1 sm:flex-none min-h-[44px] hud-clip-chamfer hud-hero-bg py-2 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 shadow-md hover:opacity-90 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 shrink-0" />
               <span>+ TAMBAH AKTIVITAS</span>
             </button>
           </div>
@@ -203,17 +204,17 @@ export default function ActivitiesPage() {
               ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-400"
               : "bg-red-500/10 border border-red-500/40 text-red-400"
           }`}>
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{feedback.msg}</span>
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span className="break-words">{feedback.msg}</span>
           </div>
         )}
 
         {/* Inline Add Modal Form */}
         {showAddForm && (
-          <div className="mb-6 hud-card border rounded p-5 relative shadow-xl animate-in fade-in-50 duration-200">
+          <div className="mb-6 hud-card border rounded p-4 sm:p-5 relative shadow-xl animate-in fade-in-50 duration-200 min-w-0">
             <h2 className="font-display text-sm font-bold hud-hero-text uppercase mb-4 flex items-center gap-2">
-              <Zap className="w-4 h-4" />
-              DAFTARKAN AKTIVITAS KUSTOM BARU
+              <Zap className="w-4 h-4 shrink-0" />
+              <span>DAFTARKAN AKTIVITAS KUSTOM BARU</span>
             </h2>
             <form onSubmit={handleAdd} className="space-y-4 font-mono text-xs">
               <div>
@@ -224,7 +225,7 @@ export default function ActivitiesPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Renang, Futsal, Muay Thai, Angkat Beban"
-                  className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2.5 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                 />
               </div>
 
@@ -238,7 +239,7 @@ export default function ActivitiesPage() {
                     required
                     value={freq}
                     onChange={(e) => setFreq(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2.5 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                   />
                 </div>
 
@@ -252,7 +253,7 @@ export default function ActivitiesPage() {
                     required
                     value={duration}
                     onChange={(e) => setDuration(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2.5 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                   />
                 </div>
 
@@ -261,7 +262,7 @@ export default function ActivitiesPage() {
                   <select
                     value={intensity}
                     onChange={(e) => setIntensity(e.target.value as ActivityIntensity)}
-                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2.5 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                   >
                     <option value="low">Rendah (Low)</option>
                     <option value="moderate">Sedang (Moderate)</option>
@@ -270,20 +271,20 @@ export default function ActivitiesPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 rounded hud-card-inner border hud-border hud-text-muted hover:hud-text font-bold"
+                  className="min-h-[44px] px-4 py-2 rounded hud-card-inner border hud-border hud-text-muted hover:hud-text font-bold cursor-pointer"
                 >
                   BATAL
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="hud-hero-bg px-5 py-2 rounded font-bold uppercase hover:opacity-90"
+                  className="min-h-[44px] hud-hero-bg px-5 py-2 rounded font-bold uppercase hover:opacity-90 cursor-pointer disabled:opacity-50"
                 >
-                  SIMPAN AKTIVITAS
+                  {loading ? "MENYIMPAN..." : "SIMPAN AKTIVITAS"}
                 </button>
               </div>
             </form>
@@ -300,26 +301,26 @@ export default function ActivitiesPage() {
             activities.map((act) => (
               <div
                 key={act.id}
-                className="hud-card-inner border hud-border rounded p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-primary/50 transition-colors shadow"
+                className="hud-card-inner border hud-border rounded p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-primary/50 transition-colors shadow min-w-0"
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded hud-card-high border hud-border flex items-center justify-center hud-beam-text mt-0.5 shrink-0">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded hud-card-high border hud-border flex items-center justify-center hud-beam-text mt-0.5 shrink-0">
                     <Activity className="w-4 h-4" />
                   </div>
-                  <div>
-                    <h3 className="font-display text-sm font-bold hud-text">{act.activity_name}</h3>
-                    <div className="flex items-center gap-3 font-mono text-[11px] hud-text-muted mt-1 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-display text-sm font-bold hud-text break-words">{act.activity_name}</h3>
+                    <div className="flex items-center gap-2 sm:gap-3 font-mono text-[11px] hud-text-muted mt-1 flex-wrap">
                       <span className="flex items-center gap-1">
-                        <Repeat className="w-3.5 h-3.5 hud-hero-text" />
-                        {act.frequency_per_week}x / minggu
+                        <Repeat className="w-3.5 h-3.5 hud-hero-text shrink-0" />
+                        {act.frequency_per_week}x / mgg
                       </span>
                       <span>•</span>
                       <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 hud-sub-text" />
-                        {act.duration_minutes} menit / sesi
+                        <Clock className="w-3.5 h-3.5 hud-sub-text shrink-0" />
+                        {act.duration_minutes} mnt / sesi
                       </span>
                       <span>•</span>
-                      <span className={`px-2 py-0.2 rounded font-mono text-[10px] font-bold uppercase ${
+                      <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase ${
                         act.intensity === "high" 
                           ? "bg-red-500/20 text-red-400 border border-red-500/30" 
                           : act.intensity === "moderate" 
@@ -333,8 +334,9 @@ export default function ActivitiesPage() {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleDelete(act.id)}
-                  className="w-8 h-8 rounded hud-card-high border hud-border flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors shrink-0"
+                  className="min-h-[44px] min-w-[44px] p-2 rounded hud-card-high border hud-border flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors shrink-0 self-end sm:self-center cursor-pointer"
                   title="Hapus Aktivitas"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -345,19 +347,19 @@ export default function ActivitiesPage() {
         </div>
 
         {/* AI Context Explainer Banner */}
-        <div className="mt-8 p-4 hud-card border rounded font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
+        <div className="mt-8 p-4 hud-card border rounded font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 min-w-0">
+          <div className="min-w-0">
             <span className="hud-hero-text font-bold block flex items-center gap-1.5">
-              <Flame className="w-4 h-4" />
-              INTEGRASI KONTEKS AI GEMINI (SEKTOR 4)
+              <Flame className="w-4 h-4 shrink-0" />
+              <span>INTEGRASI KONTEKS AI GEMINI (SEKTOR 4)</span>
             </span>
-            <p className="text-[11px] hud-text-muted mt-0.5">
+            <p className="text-[11px] hud-text-muted mt-0.5 break-words">
               Daftar aktivitas ini otomatis dikirim ke Gemini AI saat meracik rencana makan mingguan (misal meningkatkan alokasi protein saat Anda memiliki jadwal angkat beban intensif).
             </p>
           </div>
           <Link
             href="/program"
-            className="hud-clip-chamfer hud-hero-bg px-4 py-2 text-xs font-bold uppercase transition-all flex items-center gap-1.5 shrink-0 hover:opacity-90"
+            className="w-full sm:w-auto min-h-[44px] hud-clip-chamfer hud-hero-bg px-4 py-2 text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 shrink-0 hover:opacity-90"
           >
             <span>LANJUT KE STEP 4: PILIH PROGRAM</span>
             <ArrowRight className="w-4 h-4" />

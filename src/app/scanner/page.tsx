@@ -36,12 +36,14 @@ import {
   Search,
   Scale,
   Calculator,
-  Check
+  Check,
+  RotateCcw
 } from "lucide-react";
 
 import { ProgramType } from "@/types/database";
 import { getProgramNutrientRules, calculateMacroTargets, calculateRemainingCalories } from "@/lib/tdee/calculator";
 import { useSelectedAiModel } from "@/lib/gemini/models";
+import { ModelSelector } from "@/components/ai/model-selector";
 
 export interface NutritionEntry {
   id: string;
@@ -631,7 +633,7 @@ export default function TrackingMakananPage() {
 
         const img = new window.Image();
         img.onload = () => {
-          const maxDim = 800;
+          const maxDim = 1024;
           let w = img.width;
           let h = img.height;
           if (w > maxDim || h > maxDim) {
@@ -663,7 +665,7 @@ export default function TrackingMakananPage() {
                 setIsCompressingPhoto(false);
               },
               "image/jpeg",
-              0.78
+              0.80
             );
           } else {
             setSelectedFile(file);
@@ -1009,15 +1011,15 @@ export default function TrackingMakananPage() {
       <TacticalHeader activeTab="scanner" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8 space-y-5 sm:space-y-6">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 min-w-0 space-y-5 sm:space-y-6">
         
         {/* ========================================================================= */}
         {/* HEADER: DATE NAVIGATION (TANGGAL, BULAN, TAHUN - BISA BESOK / KEMARIN)    */}
         {/* ========================================================================= */}
-        <div className="hud-card border rounded p-4 sm:p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-primary/40 bg-gradient-to-r from-primary/10 via-transparent to-transparent">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 hud-hero-text" />
+        <div className="hud-card border rounded p-4 sm:p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-primary/40 bg-gradient-to-r from-primary/10 via-transparent to-transparent min-w-0">
+          <div className="space-y-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Calendar className="w-5 h-5 hud-hero-text shrink-0" />
               <span className="font-display text-xs sm:text-sm font-bold hud-hero-text uppercase tracking-wider">
                 LOG HARIAN NUTRISI & MAKANAN
               </span>
@@ -1028,19 +1030,20 @@ export default function TrackingMakananPage() {
             <h2 className="font-mono text-base sm:text-lg font-bold hud-text">
               {formatIndonesianDate(selectedDate)}
             </h2>
-            <p className="font-mono text-[11px] text-outline">
+            <p className="font-mono text-[11px] text-outline break-words">
               Anda bisa mencatat makanan untuk hari ini, merencanakan hari besok, atau mengoreksi hari sebelumnya.
             </p>
           </div>
 
           {/* Date Switcher Controls */}
-          <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
+          <div className="flex items-center gap-2 flex-wrap font-mono text-xs w-full md:w-auto">
             <button
+              type="button"
               onClick={() => setSelectedDate(shiftDateBy(selectedDate, -1))}
-              className="px-3 py-1.5 rounded hud-card-inner border hud-border hover:border-primary flex items-center gap-1 transition-all"
+              className="flex-1 sm:flex-none min-h-[44px] px-3 py-2 rounded hud-card-inner border hud-border hover:border-primary flex items-center justify-center gap-1 transition-all cursor-pointer"
               title="Hari Sebelumnya"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4 shrink-0" />
               <span>Kemarin</span>
             </button>
 
@@ -1049,22 +1052,24 @@ export default function TrackingMakananPage() {
               type="date"
               value={selectedDate}
               onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-              className="px-3 py-1.5 rounded hud-card-high border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary cursor-pointer"
+              className="flex-1 sm:flex-none min-h-[44px] px-3 py-2 rounded hud-card-high border hud-border font-mono text-base sm:text-xs hud-text focus:outline-none focus:border-primary cursor-pointer"
             />
 
             <button
+              type="button"
               onClick={() => setSelectedDate(shiftDateBy(selectedDate, 1))}
-              className="px-3 py-1.5 rounded hud-card-inner border hud-border hover:border-primary flex items-center gap-1 transition-all"
+              className="flex-1 sm:flex-none min-h-[44px] px-3 py-2 rounded hud-card-inner border hud-border hover:border-primary flex items-center justify-center gap-1 transition-all cursor-pointer"
               title="Hari Berikutnya"
             >
               <span>Besok</span>
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4 shrink-0" />
             </button>
 
             {selectedDate !== getTodayString() && (
               <button
+                type="button"
                 onClick={() => setSelectedDate(getTodayString())}
-                className="px-2.5 py-1.5 rounded hud-hero-bg text-black dark:text-black font-bold text-[10px] uppercase shadow"
+                className="w-full sm:w-auto min-h-[44px] px-3 py-2 rounded hud-hero-bg text-black dark:text-black font-bold text-xs uppercase shadow flex items-center justify-center cursor-pointer"
               >
                 Hari Ini
               </button>
@@ -1255,48 +1260,16 @@ export default function TrackingMakananPage() {
           {/* COLUMN 1: AI TRACKING INPUT SENSOR (Cols 1-6) */}
           <div className="lg:col-span-6 space-y-6">
             <div className="hud-card border rounded p-5 relative shadow-xl theme-transition">
-              <div className="flex items-center justify-between border-b hud-border pb-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <ScanLine className="w-5 h-5 hud-hero-text" />
-                  <h3 className="font-display text-sm font-bold hud-text uppercase">
-                    INPUT RANSUM KE TANGGAL: {selectedDate}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b hud-border pb-3 mb-4 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ScanLine className="w-5 h-5 hud-hero-text shrink-0" />
+                  <h3 className="font-display text-sm font-bold hud-text uppercase truncate">
+                    INPUT RANSUM: {selectedDate}
                   </h3>
                 </div>
-                {/* Dynamic AI Model Selector Badge (Synchronized with Profile & Program) */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                    className="font-mono text-[10px] hud-beam-text border hud-border px-2.5 py-1 rounded hud-card-inner font-bold flex items-center gap-1.5 hover:border-primary transition-all cursor-pointer shadow-sm"
-                    title="Model AI yang aktif — klik untuk mengganti secara global"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                    <span>{activeModel.shortName}</span>
-                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isModelDropdownOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {isModelDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-1.5 w-56 hud-card border border-primary/50 rounded shadow-2xl p-1 z-30 font-mono text-[11px] space-y-0.5 backdrop-blur-md">
-                      <div className="px-2 py-1 text-[9px] text-outline uppercase font-bold border-b hud-border">
-                        PILIH ENGINE SENSOR AI (GLOBAL)
-                      </div>
-                      {availableModels.map((m) => (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => {
-                            changeModel(m.id);
-                            setIsModelDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between transition-colors ${
-                            m.id === modelId ? "hud-hero-bg text-black font-bold" : "hud-card-inner hover:bg-primary/20 text-slate-200"
-                          }`}
-                        >
-                          <span>{m.shortName}</span>
-                          <span className="text-[8px] opacity-75">{m.badge}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                {/* Dynamic AI Model Selector (Multimodal Vision Only) */}
+                <div className="w-full sm:w-auto min-w-0">
+                  <ModelSelector compact visionOnly />
                 </div>
               </div>
 
@@ -1346,19 +1319,56 @@ export default function TrackingMakananPage() {
                     }`}
                   >
                     {previewUrl ? (
-                      <div className="relative h-60 w-full rounded overflow-hidden">
-                        <img
-                          src={previewUrl}
-                          alt="Foto Makanan"
-                          className="w-full h-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setPreviewUrl(null); }}
-                          className="absolute top-2 right-2 px-2.5 py-1 rounded bg-black/85 font-mono text-[10px] text-white border hud-border hover:bg-red-600 transition-colors cursor-pointer"
-                        >
-                          GANTI FOTO
-                        </button>
+                      <div className="space-y-3">
+                        <div className="relative h-60 w-full rounded overflow-hidden border hud-border">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={previewUrl}
+                            alt="Foto Makanan"
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setPreviewUrl(null); }}
+                              className="min-h-[44px] px-3 py-1.5 rounded bg-black/90 font-mono text-xs text-white border border-rose-500/50 hover:bg-rose-600 transition-colors cursor-pointer shadow-lg flex items-center gap-1.5"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                              <span>Ambil Ulang</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Instant Action Bar */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setPreviewUrl(null); }}
+                            disabled={loading || isCompressingPhoto}
+                            className="flex-1 min-h-[44px] px-3 py-2 rounded hud-card-inner border hud-border font-mono text-xs font-bold uppercase text-slate-300 hover:text-white flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                          >
+                            <RotateCcw className="w-4 h-4 text-slate-400" />
+                            <span>Ambil Ulang</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleProcessAI(); }}
+                            disabled={loading || isCompressingPhoto || !canProcess}
+                            className="flex-1 min-h-[44px] px-4 py-2 rounded hud-hero-bg font-mono text-xs font-bold uppercase text-black flex items-center justify-center gap-2 disabled:opacity-40 shadow-lg cursor-pointer hover:opacity-90 active:scale-98"
+                          >
+                            {loading ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                                <span>Memproses...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="w-4 h-4 text-black" />
+                                <span>Kirim ke AI</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="py-6 space-y-3">
@@ -1399,18 +1409,18 @@ export default function TrackingMakananPage() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isCompressingPhoto}
-                      className="py-2.5 px-3 rounded hud-card-high border hud-border font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-primary transition-all cursor-pointer disabled:opacity-50"
+                      className="min-h-[44px] py-2.5 px-3 rounded hud-card-high border hud-border font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-primary transition-all cursor-pointer disabled:opacity-50"
                     >
-                      <Upload className="w-4 h-4 text-cyan-400" />
+                      <Upload className="w-4 h-4 text-cyan-400 shrink-0" />
                       <span>PILIH GALERI</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
                       disabled={isCompressingPhoto}
-                      className="py-2.5 px-3 rounded hud-card-high border border-emerald-500/50 bg-emerald-500/10 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-emerald-400 transition-all text-emerald-400 cursor-pointer shadow-md active:scale-98 disabled:opacity-50"
+                      className="min-h-[44px] py-2.5 px-3 rounded hud-card-high border border-emerald-500/50 bg-emerald-500/10 font-mono text-xs font-bold uppercase flex items-center justify-center gap-2 hover:border-emerald-400 transition-all text-emerald-400 cursor-pointer shadow-md active:scale-98 disabled:opacity-50"
                     >
-                      <Camera className="w-4 h-4" />
+                      <Camera className="w-4 h-4 shrink-0" />
                       <span>KAMERA HP</span>
                     </button>
                   </div>
@@ -1433,7 +1443,7 @@ export default function TrackingMakananPage() {
                         value={photoHint}
                         onChange={(e) => setPhotoHint(e.target.value)}
                         placeholder="Contoh: Nasi padang ayam bakar dada, tahu goreng..."
-                        className="w-full px-3 py-2 rounded hud-card border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary"
+                        className="w-full px-3 py-2 rounded hud-card border hud-border font-mono text-base sm:text-xs hud-text focus:outline-none focus:border-primary min-h-[44px]"
                       />
                       <span className="text-[10px] text-outline block">
                         Opsional: Tuliskan catatan menu untuk membantu sensor AI mendeteksi dengan presisi tinggi.
@@ -1457,7 +1467,7 @@ export default function TrackingMakananPage() {
                         value={dbSearchQuery}
                         onChange={(e) => setDbSearchQuery(e.target.value)}
                         placeholder="Ketik nama makanan (cth: dada ayam, telur, tempe, nasi padang, alpukat...)"
-                        className="w-full px-3.5 py-2.5 pl-9 rounded hud-card-inner border hud-border font-mono text-xs hud-text focus:outline-none focus:border-primary"
+                        className="w-full px-3.5 py-2.5 pl-9 rounded hud-card-inner border hud-border font-mono text-base sm:text-xs hud-text focus:outline-none focus:border-primary min-h-[44px]"
                       />
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                       {isSearchingDb && (
@@ -1930,12 +1940,17 @@ export default function TrackingMakananPage() {
         {/* MODAL EDIT ITEM MAKANAN DI HARI SEBELUMNYA / HARI INI                     */}
         {/* ========================================================================= */}
         {editingItem && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md hud-card border-2 border-primary rounded p-6 shadow-2xl space-y-4 font-mono text-xs relative">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="w-full max-w-md hud-card border-2 border-primary rounded-t-2xl sm:rounded-lg p-5 sm:p-6 shadow-2xl space-y-4 font-mono text-xs relative max-h-[85vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b hud-border pb-2">
                 <span className="font-bold text-sm hud-hero-text">EDIT CATATAN MAKANAN</span>
-                <button onClick={() => setEditingItem(null)} className="text-outline hover:text-white">
-                  <X className="w-4 h-4" />
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-outline hover:text-white cursor-pointer"
+                  title="Tutup Modal"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
@@ -1947,11 +1962,11 @@ export default function TrackingMakananPage() {
                     required
                     value={editingItem.food_name}
                     onChange={(e) => setEditingItem({ ...editingItem, food_name: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <span className="text-outline block mb-1">Berat (Gram):</span>
                     <input
@@ -1959,7 +1974,7 @@ export default function TrackingMakananPage() {
                       min={1}
                       value={editingItem.estimated_weight_g}
                       onChange={(e) => setEditingItem({ ...editingItem, estimated_weight_g: Number(e.target.value) })}
-                      className="w-full px-3 py-1.5 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                      className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                     />
                   </div>
                   <div>
@@ -1969,7 +1984,7 @@ export default function TrackingMakananPage() {
                       min={0}
                       value={editingItem.calories_kcal}
                       onChange={(e) => setEditingItem({ ...editingItem, calories_kcal: Number(e.target.value) })}
-                      className="w-full px-3 py-1.5 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                      className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                     />
                   </div>
                 </div>
@@ -1985,7 +2000,7 @@ export default function TrackingMakananPage() {
                         ...editingItem, 
                         macros: { ...editingItem.macros, protein_g: Number(e.target.value) } 
                       })}
-                      className="w-full px-2 py-1.5 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                      className="w-full px-2 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                     />
                   </div>
                   <div>
@@ -1998,7 +2013,7 @@ export default function TrackingMakananPage() {
                         ...editingItem, 
                         macros: { ...editingItem.macros, carbs_g: Number(e.target.value) } 
                       })}
-                      className="w-full px-2 py-1.5 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                      className="w-full px-2 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                     />
                   </div>
                   <div>
@@ -2011,22 +2026,22 @@ export default function TrackingMakananPage() {
                         ...editingItem, 
                         macros: { ...editingItem.macros, fat_g: Number(e.target.value) } 
                       })}
-                      className="w-full px-2 py-1.5 rounded hud-card-inner border hud-border hud-text focus:outline-none focus:border-primary"
+                      className="w-full px-2 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                     />
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2 border-t hud-border">
+                <div className="flex flex-col sm:flex-row justify-end gap-2 pt-3 border-t hud-border">
                   <button
                     type="button"
                     onClick={() => setEditingItem(null)}
-                    className="px-4 py-2 rounded hud-card border hud-border"
+                    className="min-h-[44px] px-4 py-2 rounded hud-card border hud-border hover:bg-slate-800 transition-colors cursor-pointer"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded hud-hero-bg font-bold text-black dark:text-black flex items-center gap-1"
+                    className="min-h-[44px] px-5 py-2 rounded hud-hero-bg font-bold text-black dark:text-black flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
                   >
                     <Save className="w-4 h-4" />
                     <span>Simpan Perubahan</span>

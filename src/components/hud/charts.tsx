@@ -27,7 +27,7 @@ export function DailyCalorieChart({ data, targetKcal }: DailyCalorieChartProps) 
   const heroColor = isUltraman ? "#ef4444" : "#4be277";
 
   return (
-    <div className="h-48 w-full">
+    <div className="h-48 w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
           <XAxis 
@@ -78,7 +78,7 @@ export function WeightTrendChart({ data }: WeightTrendChartProps) {
   const beamColor = isUltraman ? "#0284c7" : "#00f0ff";
 
   return (
-    <div className="h-44 w-full">
+    <div className="h-44 w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
           <defs>
@@ -142,7 +142,7 @@ export function MacroDistributionChart({ proteinPct, carbsPct, fatPct }: MacroPi
   ];
 
   return (
-    <div className="h-32 w-full flex items-center justify-center">
+    <div className="h-32 w-full min-w-0 flex items-center justify-center">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie

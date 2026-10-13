@@ -10,6 +10,7 @@ import { useTacticalTheme } from "@/components/theme-provider";
 import { ProgramType } from "@/types/database";
 import { getProgramNutrientRules, calculateTDEE } from "@/lib/tdee/calculator";
 import { useSelectedAiModel } from "@/lib/gemini/models";
+import { ModelSelector } from "@/components/ai/model-selector";
 import { 
   Target, 
   Flame, 
@@ -353,35 +354,35 @@ export default function ProgramSelectionPage() {
       <TacticalHeader activeTab="program" />
       <TelemetryTicker />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-8 space-y-6">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 space-y-6 min-w-0">
         {/* Header Title */}
-        <div className="hud-card border rounded p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg border-primary/30">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text">
+        <div className="hud-card border rounded p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg border-primary/30 min-w-0">
+          <div className="flex items-center gap-3 min-w-0 w-full max-w-full">
+            <div className="w-10 h-10 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text shrink-0">
               <Target className="w-5 h-5" />
             </div>
-            <div>
-              <h1 className="font-display text-base sm:text-lg font-bold hud-text uppercase">
+            <div className="min-w-0 flex-1">
+              <h1 className="font-display text-base sm:text-lg font-bold hud-text uppercase truncate">
                 PILIH PROGRAM TIKET TEMPUR & ANALISIS AI
               </h1>
-              <span className="font-mono text-[11px] text-outline uppercase block mt-0.5">
+              <span className="font-mono text-[11px] text-outline uppercase block mt-0.5 truncate">
                 Pilih dari 6 protokol nutrisi terukur • Dianalisis langsung oleh {activeModel.shortName}
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto shrink-0">
             <button
               type="button"
               onClick={() => syncProgramData(false)}
               disabled={isProgramSyncing}
-              className="py-1.5 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 text-slate-300 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
+              className="flex-1 sm:flex-none min-h-[44px] py-2 px-3 rounded hud-card-inner border hud-border hover:border-primary font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 text-slate-300 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
               title="Segarkan target program dan biometrik dari database Cloud"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isProgramSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isProgramSyncing ? "animate-spin text-primary" : "text-cyan-400"}`} />
               <span>{isProgramSyncing ? "MENYINKRONKAN..." : "SINKRONKAN CLOUD"}</span>
             </button>
             <div className="hidden sm:flex items-center gap-2 font-mono text-xs hud-text-muted">
-              <Calendar className="w-4 h-4 hud-beam-text" />
+              <Calendar className="w-4 h-4 hud-beam-text shrink-0" />
               <span>KAMPANYE: <strong className="hud-hero-text font-bold">180 HARI (6 BULAN)</strong></span>
             </div>
           </div>
@@ -503,29 +504,33 @@ export default function ProgramSelectionPage() {
 
         {/* AI CONSULTATION & FEASIBILITY ANALYSIS SECTION */}
         <div className="hud-card border rounded-lg p-5 shadow-xl relative theme-transition space-y-4 border-primary/40">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b hud-border pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text animate-pulse">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b hud-border pb-3 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0 w-full max-w-full">
+              <div className="w-8 h-8 rounded hud-card-high border hud-border flex items-center justify-center hud-hero-text animate-pulse shrink-0">
                 <Sparkles className="w-4 h-4" />
               </div>
-              <div>
-                <span className="font-display text-sm font-bold hud-hero-text uppercase tracking-wide">
+              <div className="min-w-0 flex-1">
+                <span className="font-display text-sm font-bold hud-hero-text uppercase tracking-wide block truncate">
                   HASIL ANALISIS KELAYAKAN AI ({activeModel.shortName})
                 </span>
-                <span className="font-mono text-[11px] hud-text-muted block">
-                  Analisis biometrik untuk program: <strong className="hud-text font-bold">{selectedProgObj.title}</strong> ({selectedProgObj.targetKcal} kcal)
+                <span className="font-mono text-[11px] hud-text-muted block truncate">
+                  Biometrik: {selectedProgObj.title} ({selectedProgObj.targetKcal} kcal)
                 </span>
               </div>
             </div>
 
-            <button
-              onClick={() => triggerAiAnalysis(selectedType)}
-              disabled={isAnalyzingAi}
-              className="px-3 py-1.5 rounded hud-card-high border hud-border hover:border-primary font-mono text-xs flex items-center gap-1.5 transition-all hud-text-muted hover:hud-text"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzingAi ? "animate-spin" : ""}`} />
-              <span>{isAnalyzingAi ? "MENGANALISIS..." : "ANALISIS ULANG AI"}</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <ModelSelector compact />
+              <button
+                type="button"
+                onClick={() => triggerAiAnalysis(selectedType)}
+                disabled={isAnalyzingAi}
+                className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded hud-card-high border hud-border hover:border-primary font-mono text-xs flex items-center justify-center gap-1.5 transition-all hud-text-muted hover:hud-text cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzingAi ? "animate-spin" : ""}`} />
+                <span>{isAnalyzingAi ? "MENGANALISIS..." : "ANALISIS ULANG AI"}</span>
+              </button>
+            </div>
           </div>
 
           {isAnalyzingAi ? (
@@ -539,7 +544,7 @@ export default function ProgramSelectionPage() {
             <div className="space-y-4 font-mono text-xs">
               {/* Verdict Banner */}
               <div className="p-3.5 rounded bg-black/60 border hud-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <span className="px-2.5 py-1 rounded hud-hero-bg text-black font-bold text-[11px]">
                     STATUS: {aiAnalysisResult.feasibility_status || "DISETUJUI & OPTIMAL"}
                   </span>
@@ -554,22 +559,22 @@ export default function ProgramSelectionPage() {
 
               {/* 2-Column Nutrition Strategy */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3.5 rounded hud-card-inner border hud-border space-y-1.5">
+                <div className="p-3.5 rounded hud-card-inner border hud-border space-y-1.5 min-w-0">
                   <span className="font-mono text-[11px] hud-beam-text font-bold block uppercase flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5" />
-                    STRATEGI PROTEIN HARIAN
+                    <Info className="w-3.5 h-3.5 shrink-0" />
+                    <span>STRATEGI PROTEIN HARIAN</span>
                   </span>
-                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                  <p className="text-slate-300 leading-relaxed text-[11px] break-words">
                     {aiAnalysisResult.protein_strategy}
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded hud-card-inner border hud-border space-y-1.5">
+                <div className="p-3.5 rounded hud-card-inner border hud-border space-y-1.5 min-w-0">
                   <span className="font-mono text-[11px] hud-hero-text font-bold block uppercase flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5" />
-                    KEBIJAKAN MAKRO & MIKRONUTRISI
+                    <Shield className="w-3.5 h-3.5 shrink-0" />
+                    <span>KEBIJAKAN MAKRO & MIKRONUTRISI</span>
                   </span>
-                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                  <p className="text-slate-300 leading-relaxed text-[11px] break-words">
                     {aiAnalysisResult.macro_micro_policy}
                   </p>
                 </div>
@@ -577,7 +582,7 @@ export default function ProgramSelectionPage() {
 
               {/* Actionable Tactics */}
               {Array.isArray(aiAnalysisResult.actionable_tactics) && (
-                <div className="p-3.5 rounded hud-card-inner border hud-border space-y-2">
+                <div className="p-3.5 rounded hud-card-inner border hud-border space-y-2 min-w-0">
                   <span className="font-mono text-[11px] hud-text font-bold block uppercase">
                     3 REKOMENDASI TAKTIS HUNTER (AI RECOMMENDATION):
                   </span>
@@ -585,7 +590,7 @@ export default function ProgramSelectionPage() {
                     {aiAnalysisResult.actionable_tactics.map((tip: string, idx: number) => (
                       <li key={idx} className="flex items-start gap-2 text-[11px] text-slate-300">
                         <span className="hud-hero-text font-bold shrink-0">[{idx + 1}]</span>
-                        <span>{tip}</span>
+                        <span className="break-words">{tip}</span>
                       </li>
                     ))}
                   </ul>
@@ -594,7 +599,7 @@ export default function ProgramSelectionPage() {
 
               {/* AI Motivation Verdict */}
               {aiAnalysisResult.ai_verdict && (
-                <div className="p-3 rounded bg-primary/5 border border-primary/30 italic text-slate-300 text-[11px]">
+                <div className="p-3 rounded bg-primary/5 border border-primary/30 italic text-slate-300 text-[11px] break-words">
                   &ldquo;{aiAnalysisResult.ai_verdict}&rdquo;
                 </div>
               )}
@@ -607,28 +612,29 @@ export default function ProgramSelectionPage() {
         </div>
 
         {/* Action Button & Invariant Confirmation */}
-        <div className="hud-card border rounded-lg p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl border-primary/50">
-          <div className="font-mono text-xs">
+        <div className="hud-card border rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 shadow-xl border-primary/50 min-w-0">
+          <div className="font-mono text-xs min-w-0">
             <span className="hud-hero-text font-bold block flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              KOMITMEN KAMPANYE HUNTER 180 HARI
+              <Shield className="w-4 h-4 shrink-0" />
+              <span>KOMITMEN KAMPANYE HUNTER 180 HARI</span>
             </span>
-            <span className="hud-text-muted text-[11px] block mt-0.5">
+            <span className="hud-text-muted text-[11px] block mt-0.5 break-words">
               Program <strong>{selectedProgObj.title}</strong> akan aktif dengan batas <strong>{selectedProgObj.targetKcal} kcal/hari</strong> dan terintegrasi langsung ke pemindai ransum Anda.
             </span>
           </div>
 
           <button
+            type="button"
             onClick={handleActivateProgram}
             disabled={loading}
-            className="hud-clip-chamfer hud-hero-bg py-3 px-6 font-mono text-xs font-bold uppercase transition-all flex items-center gap-2 shadow-xl hover:opacity-90 disabled:opacity-50 shrink-0 cursor-pointer text-black"
+            className="w-full sm:w-auto min-h-[44px] hud-clip-chamfer hud-hero-bg py-3 px-6 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-xl hover:opacity-90 disabled:opacity-50 shrink-0 cursor-pointer text-black"
           >
             {loading ? (
               <span>MENGAKTIFKAN PROTOKOL...</span>
             ) : (
               <>
                 <span>AKTIFKAN PROGRAM & MULAI TRACKING</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 shrink-0" />
               </>
             )}
           </button>

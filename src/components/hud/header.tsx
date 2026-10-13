@@ -47,10 +47,10 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
   return (
     <header className="w-full px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 flex items-center justify-between border-b hud-border hud-card z-50 sticky top-0 theme-transition shadow-lg">
       <div className="flex items-center gap-2 sm:gap-3 lg:gap-5 min-w-0">
-        {/* Tactical Command Deck Trigger */}
+        {/* Tactical Command Deck Trigger: Hanya muncul di mobile (<1024px) karena desktop sudah ada sidebar tetap */}
         <button
           onClick={handleSidebarClick}
-          className="h-8 sm:h-9 px-2 sm:px-2.5 rounded hud-card-inner border hud-border flex items-center gap-1.5 hover:border-primary transition-all group shrink-0 shadow-sm cursor-pointer"
+          className="min-h-[44px] min-w-[44px] px-2.5 rounded hud-card-inner border hud-border flex items-center justify-center gap-1.5 hover:border-primary transition-all group shrink-0 shadow-sm cursor-pointer lg:hidden"
           title="Buka Tactical Command Deck"
           aria-label="Buka Command Deck"
         >
@@ -152,7 +152,7 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
         {/* INTERACTIVE DUAL THEME SWITCHER */}
         <button
           onClick={toggleTheme}
-          className="relative flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded border hud-border hud-card-high hover:border-primary transition-all duration-300 shadow-md group cursor-pointer"
+          className="relative min-h-[44px] flex items-center gap-1 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded border hud-border hud-card-high hover:border-primary transition-all duration-300 shadow-md group cursor-pointer"
           title="Ganti Mode: Godzilla Titan (Dark) vs Ultraman Science Patrol (Light)"
           aria-label="Ganti Tema"
         >
@@ -176,7 +176,7 @@ export function TacticalHeader({ activeTab = "dashboard", onOpenSidebar }: Heade
         <button
           onClick={handleCloudSync}
           disabled={isGlobalSyncing}
-          className="relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded border hud-border hud-card-inner hover:border-primary transition-all duration-200 shadow-sm group cursor-pointer text-slate-300 hover:text-white disabled:opacity-50"
+          className="relative min-h-[44px] min-w-[44px] flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded border hud-border hud-card-inner hover:border-primary transition-all duration-200 shadow-sm group cursor-pointer text-slate-300 hover:text-white disabled:opacity-50"
           title="Sinkronisasi seluruh data dengan database Cloud (Desktop & Mobile Sync)"
           aria-label="Sinkronisasi Cloud"
         >

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "selfcheck": "node node_modules/jiti/bin/jiti.js scripts/ai-selfcheck.ts"
   },
   "dependencies": {
     "@google/genai": "^2.22.0",
