@@ -59,6 +59,7 @@ export default function ProfilePage() {
     status: null,
   });
 
+  const [hasProgram, setHasProgram] = useState<boolean>(true);
   const [isProfileSyncing, setIsProfileSyncing] = useState(false);
 
   // Activities section inside Onboarding
@@ -186,7 +187,7 @@ export default function ProfilePage() {
       } catch {}
     }
 
-    // 2. Fetch fresh profile & activities from Supabase API
+    // 2. Fetch fresh profile, activities & status from Supabase API
     const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
     Promise.all([
       fetch("/api/profile", {
@@ -195,8 +196,11 @@ export default function ProfilePage() {
       fetch("/api/activities", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       }),
+      fetch("/api/auth/status", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
     ])
-      .then(async ([profRes, actRes]) => {
+      .then(async ([profRes, actRes, statusRes]) => {
         if (profRes.ok) {
           const data = await profRes.json();
           if (data.profile) {
@@ -211,6 +215,13 @@ export default function ProfilePage() {
             const clean = sanitizeModelId(data.preferred_gemini_model);
             setSelectedModel(clean);
             localStorage.setItem("chai_ai_model", clean);
+          }
+        }
+
+        if (statusRes.ok) {
+          const sData = await statusRes.json();
+          if (sData.has_program !== undefined) {
+            setHasProgram(Boolean(sData.has_program));
           }
         }
 
@@ -261,6 +272,9 @@ export default function ProfilePage() {
 
       if (statusRes.ok) {
         const data = await statusRes.json();
+        if (data.has_program !== undefined) {
+          setHasProgram(Boolean(data.has_program));
+        }
         if (data.profile) {
           if (data.profile.full_name) setFullName(data.profile.full_name);
           if (data.profile.gender) setGender(data.profile.gender);
@@ -352,6 +366,29 @@ export default function ProfilePage() {
 
     const checkedActivities = activities.filter(a => a.checked);
 
+    // Live recalculation based on active form inputs
+    const freshTdeeResult = calculateTDEE({
+      weight_kg: Number(weightKg) || 70,
+      height_cm: Number(heightCm) || 175,
+      age: Number(age) || 25,
+      gender,
+      activity_level: activityLevel,
+    });
+
+    // 1. Immediately persist to localStorage so data is NEVER lost or reverted
+    const profilePayload = {
+      full_name: fullName,
+      gender,
+      age: Number(age),
+      height_cm: Number(heightCm),
+      weight_kg: Number(weightKg),
+      activity_level: activityLevel,
+      tdee: freshTdeeResult.tdee,
+      bmr: freshTdeeResult.bmr,
+      activities,
+    };
+    localStorage.setItem("chai_user_profile", JSON.stringify(profilePayload));
+
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
       const authHeaders: Record<string, string> = {
@@ -359,8 +396,8 @@ export default function ProfilePage() {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
 
-      // 1. Save profile
-      await fetch("/api/profile", {
+      // 2. Save profile to Supabase API
+      const profRes = await fetch("/api/profile", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -374,56 +411,46 @@ export default function ProfilePage() {
         }),
       });
 
-      // 2. Save checked activities via batch POST
+      if (!profRes.ok) {
+        const errJson = await profRes.json().catch(() => ({}));
+        throw new Error(errJson.error || "Gagal menyimpan biometrik ke database server");
+      }
+
+      // 3. Save checked activities via batch POST
       await fetch("/api/activities", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ activities: checkedActivities }),
-      });
+      }).catch(() => {});
 
-      // 3. Persist locally with exact calculated TDEE & BMR
-      localStorage.setItem("chai_user_profile", JSON.stringify({
-        full_name: fullName,
-        gender,
-        age: Number(age),
-        height_cm: Number(heightCm),
-        weight_kg: Number(weightKg),
-        activity_level: activityLevel,
-        tdee: tdeeResult.tdee,
-        bmr: tdeeResult.bmr,
-        activities,
-      }));
+      // 4. Trigger global cloud sync for header/ticker/companion
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("chai_trigger_cloud_sync"));
+      }
 
-      setFeedback({ 
-        type: "success", 
-        msg: `Data diri & aktivitas tersimpan! TDEE: ${tdeeResult.tdee} kcal. Mengalihkan ke Hasil & Program...` 
-      });
-
-      setTimeout(() => {
-        window.location.href = "/program";
-      }, 700);
-    } catch {
-      // Local preview fallback
-      localStorage.setItem("chai_user_profile", JSON.stringify({
-        full_name: fullName,
-        gender,
-        age: Number(age),
-        height_cm: Number(heightCm),
-        weight_kg: Number(weightKg),
-        activity_level: activityLevel,
-        tdee: tdeeResult.tdee,
-        bmr: tdeeResult.bmr,
-        activities,
-      }));
-
+      // 5. Update feedback with calculated results
+      if (!hasProgram) {
+        setFeedback({ 
+          type: "success", 
+          msg: `Data diri biometrik tersimpan! TDEE Anda: ${freshTdeeResult.tdee} kcal/hari (BMR: ${freshTdeeResult.bmr} kcal). Mengalihkan ke pemilihan program target...` 
+        });
+        setTimeout(() => {
+          router.push("/program");
+        }, 1200);
+      } else {
+        setFeedback({ 
+          type: "success", 
+          msg: `Data diri biometrik berhasil disimpan! TDEE Anda: ${freshTdeeResult.tdee} kcal/hari (BMR: ${freshTdeeResult.bmr} kcal). Radar dan program aktif tersinkronisasi.` 
+        });
+      }
+    } catch (err: any) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("chai_trigger_cloud_sync"));
+      }
       setFeedback({
         type: "success",
-        msg: `Data tersimpan secara lokal (TDEE: ${tdeeResult.tdee} kcal). Melanjutkan ke Program...`,
+        msg: `TDEE berhasil dihitung (${freshTdeeResult.tdee} kcal/hari) & tersimpan di perangkat lokal. (Sinkronisasi cloud: ${err?.message || "Koneksi offline"})`,
       });
-
-      setTimeout(() => {
-        window.location.href = "/program";
-      }, 700);
     } finally {
       setLoading(false);
     }
@@ -468,13 +495,32 @@ export default function ProfilePage() {
             </div>
 
             {feedback && (
-              <div className={`mb-5 p-3 rounded font-mono text-xs flex items-center gap-2 ${
+              <div className={`mb-5 p-3.5 rounded font-mono text-xs space-y-2.5 ${
                 feedback.type === "success" 
-                  ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-400"
+                  ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-300"
                   : "bg-red-500/10 border border-red-500/40 text-red-400"
               }`}>
-                {feedback.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-                <span>{feedback.msg}</span>
+                <div className="flex items-center gap-2">
+                  {feedback.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />}
+                  <span className="font-bold leading-relaxed">{feedback.msg}</span>
+                </div>
+                {feedback.type === "success" && (
+                  <div className="flex items-center gap-2 pt-1 flex-wrap">
+                    <Link
+                      href="/program"
+                      className="px-3 py-1.5 rounded hud-card-high border border-emerald-500/50 hover:bg-emerald-500/20 text-emerald-200 font-mono text-[11px] font-bold uppercase flex items-center gap-1.5 transition-colors"
+                    >
+                      <span>PILIH / SESUAIKAN PROGRAM</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                    <Link
+                      href="/"
+                      className="px-3 py-1.5 rounded hud-card-inner border hud-border hover:border-primary text-slate-300 hover:text-white font-mono text-[11px] font-bold uppercase flex items-center gap-1.5 transition-colors"
+                    >
+                      <span>KEMBALI KE DASHBOARD</span>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 
@@ -602,13 +648,13 @@ export default function ProfilePage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full min-h-[44px] hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-xl hover:opacity-90 disabled:opacity-50 mt-5 cursor-pointer text-black"
+                className="w-full min-h-[44px] hud-clip-chamfer hud-hero-bg py-3 px-4 font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 shadow-xl hover:opacity-90 disabled:opacity-50 mt-5 cursor-pointer text-black font-extrabold tracking-wider"
               >
                 {loading ? (
-                  <span>MENGHITUNG TDEE METABOLISME...</span>
+                  <span>MENGHITUNG & MENYIMPAN TDEE...</span>
                 ) : (
                   <>
-                    <span>HITUNG TDEE SAYA</span>
+                    <span>HITUNG & SIMPAN TDEE SAYA</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
