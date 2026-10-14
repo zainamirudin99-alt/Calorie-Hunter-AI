@@ -10,7 +10,7 @@ import { TelemetryTicker } from "@/components/hud/telemetry-ticker";
 import { TacticalFooter } from "@/components/hud/footer";
 import { LockoutGate } from "@/components/hud/lockout-gate";
 import { useTacticalTheme } from "@/components/theme-provider";
-import { DailyCalorieChart, WeightTrendChart, MacroDistributionChart } from "@/components/hud/charts";
+import { DailyCalorieChart, WeightTrendChart, MacroDistributionChart, WorkoutBurnChart } from "@/components/hud/charts";
 import { 
   Swords, 
   Shield, 
@@ -89,6 +89,7 @@ export default function DashboardPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [telemetry, setTelemetry] = useState<any | null>(null);
   const [todayFoodList, setTodayFoodList] = useState<any[]>([]);
+  const [workoutHorizon, setWorkoutHorizon] = useState<"daily" | "weekly" | "monthly">("daily");
 
   // Companion character customization state
   const defaultCompanionName = isUltraman ? "ULTRA-GUARDIAN" : "VOLT-FANG";
@@ -424,6 +425,26 @@ export default function DashboardPage() {
     carbs_pct: 0,
     fat_pct: 0,
   };
+
+  const workoutAnalytics = telemetry?.workout_analytics || null;
+  const activeWorkoutChartData = workoutHorizon === "monthly"
+    ? (workoutAnalytics?.monthly || [])
+    : workoutHorizon === "weekly"
+    ? (workoutAnalytics?.weekly || [])
+    : (workoutAnalytics?.daily || []);
+
+  const totalHorizonBurnedKcal = activeWorkoutChartData.reduce(
+    (sum: number, item: any) => sum + (Number(item.calories) || 0),
+    0
+  );
+  const totalHorizonDuration = activeWorkoutChartData.reduce(
+    (sum: number, item: any) => sum + (Number(item.duration_minutes) || 0),
+    0
+  );
+  const totalHorizonSessions = activeWorkoutChartData.reduce(
+    (sum: number, item: any) => sum + (Number(item.sessions) || 0),
+    0
+  );
 
   const feedPct = targetKcal > 0 ? Math.min(100, Math.round((consumedKcal / targetKcal) * 100)) : 0;
   const energyPct = consumedKcal > 0 ? Math.min(100, Math.round(35 + (feedPct * 0.65))) : 15;
@@ -796,6 +817,73 @@ export default function DashboardPage() {
             <div className="mt-3 pt-3 border-t hud-border flex items-center justify-between font-mono text-xs">
               <span className="hud-text-muted uppercase">Kepatuhan Mingguan:</span>
               <span className="hud-hero-text font-bold">85.7% TARGET TERCAPAI</span>
+            </div>
+          </div>
+
+          {/* RECHARTS: DIAGRAM LOG LATIHAN & KALORI TERBAKAR DENGAN FILTER HARIAN/MINGGUAN/BULANAN */}
+          <div className="hud-card border rounded p-5 relative shadow-lg theme-transition border-orange-500/30">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3 border-b hud-border pb-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Flame className="w-5 h-5 text-orange-400" />
+                  <h2 className="font-display text-base hud-text font-bold">LOG LATIHAN & KALORI TERBAKAR</h2>
+                </div>
+                <p className="font-mono text-[11px] hud-text-muted mt-0.5 uppercase">
+                  DATA AKTIVITAS & HOBI • TELEMETRI MET
+                </p>
+              </div>
+
+              {/* Segmented Selector: Harian | Mingguan | Bulanan */}
+              <div className="flex items-center gap-1 p-1 rounded hud-card-inner border hud-border">
+                {(["daily", "weekly", "monthly"] as const).map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setWorkoutHorizon(h)}
+                    className={`px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                      workoutHorizon === h
+                        ? "hud-hero-bg text-black shadow"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {h === "daily" ? "HARIAN" : h === "weekly" ? "MINGGUAN" : "BULANAN"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Recharts Bar Chart Visualizer */}
+            <WorkoutBurnChart data={activeWorkoutChartData} period={workoutHorizon} />
+
+            {/* Metrics Breakdown & Quick Link */}
+            <div className="mt-3 pt-3 border-t hud-border flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1 text-orange-400 font-bold">
+                  <Flame className="w-3.5 h-3.5" />
+                  {totalHorizonBurnedKcal.toLocaleString()} KCAL
+                </span>
+                <span className="text-slate-400">•</span>
+                <span className="flex items-center gap-1 text-slate-300">
+                  <Clock className="w-3.5 h-3.5 hud-sub-text" />
+                  {totalHorizonDuration} MNT
+                </span>
+                {totalHorizonSessions > 0 && (
+                  <>
+                    <span className="text-slate-400">•</span>
+                    <span className="flex items-center gap-1 hud-hero-text">
+                      <Dumbbell className="w-3.5 h-3.5" />
+                      {totalHorizonSessions} SESI
+                    </span>
+                  </>
+                )}
+              </div>
+              <Link
+                href="/activities"
+                className="text-[11px] font-bold hud-hero-text hover:underline flex items-center gap-1 uppercase"
+              >
+                <span>+ KELOLA OLAHRAGA</span>
+                <ArrowRight className="w-3 h-3" />
+              </Link>
             </div>
           </div>
 

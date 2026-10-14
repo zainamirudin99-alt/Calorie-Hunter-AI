@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { calculateRemainingCalories, calculateReassessmentStatus } from "@/lib/tdee/calculator";
 import { getStandardWibDate } from "@/lib/utils";
+import { buildWorkoutAnalytics } from "@/lib/workouts/analytics";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -247,23 +248,26 @@ export async function GET(req: Request) {
         };
       }
 
-    // 4. Fetch today's workout logs and burned calories
+    // 4. Fetch workout logs and build multi-horizon analytics (daily, weekly, monthly)
     let todayBurnedKcal = 0;
     let todayWorkouts: any[] = [];
+    let workoutAnalytics = buildWorkoutAnalytics([]);
     try {
-      const { data: workouts } = await admin
+      const { data: allWorkouts } = await admin
         .from("workout_logs")
-        .select("id, sport_category, sport_name, met_value, duration_minutes, calories_burned, intensity, logged_date, created_at")
+        .select("id, user_id, sport_category, sport_name, met_value, duration_minutes, calories_burned, intensity, logged_date, created_at")
         .eq("user_id", user.id)
-        .or(`logged_date.eq.${todayStrUtc},logged_date.eq.${todayStrWib}`)
-        .order("created_at", { ascending: false });
+        .order("logged_date", { ascending: true });
 
-      if (workouts && Array.isArray(workouts)) {
-        todayWorkouts = workouts;
-        todayBurnedKcal = workouts.reduce(
+      if (allWorkouts && Array.isArray(allWorkouts)) {
+        todayWorkouts = allWorkouts.filter(
+          (w) => w.logged_date === todayStrUtc || w.logged_date === todayStrWib
+        );
+        todayBurnedKcal = todayWorkouts.reduce(
           (sum, item) => sum + (Number(item.calories_burned) || 0),
           0
         );
+        workoutAnalytics = buildWorkoutAnalytics(allWorkouts, now);
       }
     } catch {}
 
@@ -311,6 +315,7 @@ export async function GET(req: Request) {
       today_remaining_kcal: calculateRemainingCalories(dailyTargetKcal, netConsumedKcal),
       today_food_items: todayFoodItems,
       today_workout_items: todayWorkouts,
+      workout_analytics: workoutAnalytics,
       today_meal_plan_summary: todayMealPlanSummary,
     }, {
       headers: {

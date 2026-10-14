@@ -171,3 +171,88 @@ export function MacroDistributionChart({ proteinPct, carbsPct, fatPct }: MacroPi
     </div>
   );
 }
+
+export interface WorkoutChartItem {
+  label: string;
+  fullLabel?: string;
+  calories: number;
+  duration_minutes: number;
+  sessions?: number;
+}
+
+export interface WorkoutBurnChartProps {
+  data: WorkoutChartItem[];
+  period: "daily" | "weekly" | "monthly";
+}
+
+export function WorkoutBurnChart({ data, period }: WorkoutBurnChartProps) {
+  const { isUltraman } = useTacticalTheme();
+  const fireColor = isUltraman ? "#ef4444" : "#f97316";
+  const glowColor = isUltraman ? "#fbbf24" : "#fb923c";
+
+  // Calculate max for dynamic Y-axis scaling
+  const maxCalories = Math.max(500, ...data.map((d) => d.calories || 0));
+  const yDomainMax = Math.ceil((maxCalories * 1.15) / 100) * 100;
+
+  return (
+    <div className="h-48 w-full min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 12, right: 8, left: -22, bottom: 0 }}>
+          <defs>
+            <linearGradient id="workoutBurnGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={fireColor} stopOpacity={1} />
+              <stop offset="100%" stopColor={glowColor} stopOpacity={0.65} />
+            </linearGradient>
+          </defs>
+          <XAxis 
+            dataKey="label" 
+            tick={{ fill: "#869585", fontSize: 10, fontFamily: "monospace" }} 
+            axisLine={{ stroke: "var(--card-border)" }}
+            tickLine={false}
+          />
+          <YAxis 
+            tick={{ fill: "#869585", fontSize: 9, fontFamily: "monospace" }}
+            axisLine={{ stroke: "var(--card-border)" }}
+            tickLine={false}
+            domain={[0, yDomainMax]}
+          />
+          <Tooltip 
+            cursor={{ fill: "rgba(255, 255, 255, 0.05)" }}
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const item = payload[0].payload as WorkoutChartItem;
+                return (
+                  <div className="hud-card-high border hud-border p-2.5 rounded shadow-xl font-mono text-[11px] space-y-1">
+                    <span className="text-white font-bold block border-b hud-border pb-1">
+                      {item.fullLabel || item.label}
+                    </span>
+                    <div className="flex items-center justify-between gap-3 text-orange-400 font-bold">
+                      <span>TERBAKAR:</span>
+                      <span>{item.calories} KCAL</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-cyan-400">
+                      <span>DURASI:</span>
+                      <span>{item.duration_minutes} MNT</span>
+                    </div>
+                    {typeof item.sessions === "number" && (
+                      <div className="flex items-center justify-between gap-3 text-slate-400">
+                        <span>SESI LATIHAN:</span>
+                        <span>{item.sessions} SESI</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
+          <Bar 
+            dataKey="calories" 
+            fill="url(#workoutBurnGrad)" 
+            radius={[4, 4, 0, 0]} 
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
