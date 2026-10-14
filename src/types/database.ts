@@ -79,6 +79,29 @@ export interface WeightLog {
   note?: string | null;
 }
 
+export type SportCategory = 
+  | "gym" 
+  | "cardio" 
+  | "racket" 
+  | "team_sports" 
+  | "combat_water" 
+  | "flexibility_hiit" 
+  | "other";
+
+export interface WorkoutLog {
+  id: string;
+  user_id: string;
+  sport_category: SportCategory;
+  sport_name: string;
+  met_value: number;
+  duration_minutes: number;
+  calories_burned: number;
+  intensity: ActivityIntensity;
+  logged_date: string; // YYYY-MM-DD
+  notes?: string | null;
+  created_at: string;
+}
+
 export interface Program {
   id: string;
   user_id: string;

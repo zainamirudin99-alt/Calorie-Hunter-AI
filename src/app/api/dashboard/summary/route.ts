@@ -247,6 +247,26 @@ export async function GET(req: Request) {
         };
       }
 
+    // 4. Fetch today's workout logs and burned calories
+    let todayBurnedKcal = 0;
+    let todayWorkouts: any[] = [];
+    try {
+      const { data: workouts } = await admin
+        .from("workout_logs")
+        .select("id, sport_category, sport_name, met_value, duration_minutes, calories_burned, intensity, logged_date, created_at")
+        .eq("user_id", user.id)
+        .or(`logged_date.eq.${todayStrUtc},logged_date.eq.${todayStrWib}`)
+        .order("created_at", { ascending: false });
+
+      if (workouts && Array.isArray(workouts)) {
+        todayWorkouts = workouts;
+        todayBurnedKcal = workouts.reduce(
+          (sum, item) => sum + (Number(item.calories_burned) || 0),
+          0
+        );
+      }
+    } catch {}
+
     let finalCompanion: any = profile?.companion_data || (profile?.avatar_url ? { avatar_url: profile.avatar_url, character_name: profile.username } : null);
     if (finalCompanion?.avatar_url && typeof finalCompanion.avatar_url === "string") {
       const rawUrl: string = finalCompanion.avatar_url;
@@ -269,6 +289,8 @@ export async function GET(req: Request) {
       }
     }
 
+    const netConsumedKcal = Math.max(0, todayConsumedKcal - todayBurnedKcal);
+
     return NextResponse.json({
       success: true,
       authenticated: true,
@@ -284,8 +306,11 @@ export async function GET(req: Request) {
       weekly_macros: weeklyMacros,
       program_status: programStatus,
       today_consumed_kcal: todayConsumedKcal,
-      today_remaining_kcal: calculateRemainingCalories(dailyTargetKcal, todayConsumedKcal),
+      today_burned_kcal: todayBurnedKcal,
+      today_net_kcal: netConsumedKcal,
+      today_remaining_kcal: calculateRemainingCalories(dailyTargetKcal, netConsumedKcal),
       today_food_items: todayFoodItems,
+      today_workout_items: todayWorkouts,
       today_meal_plan_summary: todayMealPlanSummary,
     }, {
       headers: {

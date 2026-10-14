@@ -35,7 +35,8 @@ import {
   Wand2,
   X, 
   UtensilsCrossed,
-  Cpu
+  Cpu,
+  Flame
 } from "lucide-react";
 import { calculateRemainingCalories } from "@/lib/tdee/calculator";
 import { useSelectedAiModel, GEMINI_MODELS } from "@/lib/gemini/models";
@@ -399,7 +400,9 @@ export default function DashboardPage() {
 
   const targetKcal = telemetry?.daily_target_kcal || 1950;
   const consumedKcal = telemetry?.today_consumed_kcal ?? 0;
-  const remainingKcal = telemetry?.today_remaining_kcal ?? calculateRemainingCalories(targetKcal, consumedKcal);
+  const burnedKcal = telemetry?.today_burned_kcal ?? 0;
+  const netKcal = telemetry?.today_net_kcal ?? Math.max(0, consumedKcal - burnedKcal);
+  const remainingKcal = telemetry?.today_remaining_kcal ?? calculateRemainingCalories(targetKcal, netKcal);
   const isExpired = telemetry?.program_status?.isExpired || false;
 
   const dailyHistory = telemetry?.daily_history || [
@@ -650,19 +653,47 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="flex-1 w-full space-y-3">
-                <div className="p-3 hud-card-inner rounded border hud-border">
-                  <div className="flex justify-between font-mono text-xs mb-1">
-                    <span className="hud-text-muted uppercase">Target Tersisa</span>
-                    <span className="hud-beam-text font-bold">{remainingKcal} KCAL</span>
+              <div className="flex-1 w-full space-y-2.5">
+                <div className="p-3 hud-card-inner rounded border hud-border space-y-2">
+                  <div className="flex justify-between font-mono text-xs">
+                    <span className="hud-text-muted uppercase">Target Tersisa:</span>
+                    <span className="hud-beam-text font-bold text-sm">{remainingKcal} KCAL</span>
                   </div>
-                  <div className="text-xs text-muted-foreground hud-text-muted">
-                    Cadangan ransum malam untuk menjamin defisit metabolisme yang aman dan terkontrol.
+                  
+                  {/* Calorie Balance Breakdown: Consumed - Burned = Net */}
+                  <div className="pt-2 border-t hud-border grid grid-cols-2 gap-2 font-mono text-[11px]">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase">Ransum Makanan</span>
+                      <span className="hud-text font-bold">{consumedKcal} kcal</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase flex items-center gap-1">
+                        <Flame className="w-3 h-3 text-orange-400" />
+                        Olahraga
+                      </span>
+                      <span className={`font-bold ${burnedKcal > 0 ? "text-orange-400" : "text-slate-400"}`}>
+                        {burnedKcal > 0 ? `-${burnedKcal} kcal` : "0 kcal"}
+                      </span>
+                    </div>
                   </div>
+
+                  {burnedKcal > 0 && (
+                    <div className="pt-1 flex items-center justify-between font-mono text-[11px] hud-hero-text">
+                      <span className="text-[10px] uppercase">Net Kalori Hari Ini:</span>
+                      <span className="font-bold">{netKcal} kcal</span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="flex items-center justify-between font-mono text-xs px-1">
-                  <span className="hud-text-muted">TARGET PEMBAKARAN:</span>
-                  <span className="hud-text font-bold font-mono">2,450 KCAL TDEE</span>
+                  <span className="hud-text-muted">TARGET HARIAN:</span>
+                  <Link
+                    href="/activities"
+                    className="text-[11px] font-bold text-orange-400 hover:text-orange-300 flex items-center gap-1 uppercase transition-colors"
+                  >
+                    <Flame className="w-3 h-3" />
+                    <span>+ Log Olahraga</span>
+                  </Link>
                 </div>
               </div>
             </div>

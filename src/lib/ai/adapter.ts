@@ -26,6 +26,13 @@ function cleanJsonText(raw: string): string {
   const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (codeBlockMatch) {
     cleaned = codeBlockMatch[1].trim();
+  } else {
+    // If no code block, extract from first { to last }
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1).trim();
+    }
   }
   return cleaned;
 }
@@ -43,7 +50,29 @@ function parseRetryAfter(headerValue: string | null): number {
 }
 
 /**
- * Native REST call to Google Gemini
+ * Resolves requested Gemini model to official Google GenAI model IDs with fallback cascade
+ */
+function resolveGeminiModelCandidates(requestedModel: string): string[] {
+  const m = requestedModel.toLowerCase().trim();
+  const primaryCandidates: string[] = [];
+  
+  if (m.includes("3.8") || m.includes("3.7") || m.includes("2.5-flash")) {
+    primaryCandidates.push("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash");
+  } else if (m.includes("lite") || m.includes("3.5") || m.includes("3.1-flash")) {
+    primaryCandidates.push("gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash");
+  } else if (m.includes("pro")) {
+    primaryCandidates.push("gemini-2.5-pro", "gemini-1.5-pro", "gemini-2.5-flash");
+  } else {
+    primaryCandidates.push("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash");
+  }
+
+  // Deduplicate while preserving order: test requestedModel first, then official fallbacks
+  const candidates = [requestedModel, ...primaryCandidates];
+  return Array.from(new Set(candidates));
+}
+
+/**
+ * Native REST call to Google Gemini with model candidate cascade
  */
 async function executeGeminiRequest(
   options: CallAiOptions,
@@ -52,7 +81,6 @@ async function executeGeminiRequest(
 ): Promise<string> {
   const { model, apiKey, messages, image, temperature, jsonMode, schema } = options;
   const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
-  const endpoint = `${cleanBaseUrl}/models/${model}:generateContent?key=${apiKey}`;
 
   const systemMsg = messages.find((m) => m.role === "system");
   const otherMessages = messages.filter((m) => m.role !== "system");
@@ -92,17 +120,40 @@ async function executeGeminiRequest(
     };
   }
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(bodyPayload),
-    signal: timeoutSignal,
-  });
+  const modelCandidates = resolveGeminiModelCandidates(model);
+  let lastErrorText = "";
+  let lastStatus = 500;
 
-  if (!response.ok) {
-    const errorText = await response.text();
+  for (const candidateModel of modelCandidates) {
+    const endpoint = `${cleanBaseUrl}/models/${candidateModel}:generateContent?key=${apiKey}`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(bodyPayload),
+      signal: timeoutSignal,
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: string }>;
+          };
+        }>;
+      };
+
+      const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (typeof candidateText === "string" && candidateText.trim().length > 0) {
+        return candidateText;
+      }
+    }
+
+    lastStatus = response.status;
+    lastErrorText = await response.text();
+
     const last4 = apiKey.slice(-4);
     if (response.status === 401 || response.status === 403) {
       throw new AiError("AI_KEY_INVALID", {
@@ -112,50 +163,38 @@ async function executeGeminiRequest(
         message: `Kunci API Gemini tidak valid (last4: ...${last4}).`,
       });
     }
+
     if (response.status === 429) {
       const retryMs = parseRetryAfter(response.headers.get("Retry-After"));
-      const err = new AiError("AI_RATE_LIMITED", {
+      throw new AiError("AI_RATE_LIMITED", {
         provider: "gemini",
         last4,
         status: 429,
         details: { retryMs },
       });
-      throw err;
     }
-    if (response.status >= 500) {
-      throw new AiError("AI_PROVIDER_DOWN", {
-        provider: "gemini",
-        last4,
-        status: response.status,
-      });
+
+    // If 404 (model not found), proceed to next candidate in cascade
+    if (response.status === 404) {
+      continue;
     }
-    throw new AiError("AI_BAD_OUTPUT", {
+  }
+
+  const last4 = apiKey.slice(-4);
+  if (lastStatus >= 500) {
+    throw new AiError("AI_PROVIDER_DOWN", {
       provider: "gemini",
       last4,
-      status: response.status,
-      message: `Gemini mengembalikan error: ${errorText.slice(0, 200)}`,
+      status: lastStatus,
     });
   }
 
-  const data = (await response.json()) as {
-    candidates?: Array<{
-      content?: {
-        parts?: Array<{ text?: string }>;
-      };
-    }>;
-  };
-
-  const candidateText =
-    data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof candidateText !== "string") {
-    throw new AiError("AI_BAD_OUTPUT", {
-      provider: "gemini",
-      last4: apiKey.slice(-4),
-      message: "Format jawaban Gemini kosong atau tidak memiliki kandidat.",
-    });
-  }
-
-  return candidateText;
+  throw new AiError("AI_BAD_OUTPUT", {
+    provider: "gemini",
+    last4,
+    status: lastStatus,
+    message: `Gemini mengembalikan error: ${lastErrorText.slice(0, 200)}`,
+  });
 }
 
 /**
