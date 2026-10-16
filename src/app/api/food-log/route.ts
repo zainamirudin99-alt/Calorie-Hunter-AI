@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createHash } from "crypto";
-import { PRIMARY_GEMINI_MODEL, resolveOfficialGeminiModel } from "@/lib/gemini/client";
+import { PRIMARY_GEMINI_MODEL } from "@/lib/gemini/client";
 import { deconstructFromNutritionDb } from "@/lib/nutrition/search";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -95,6 +95,7 @@ export async function GET(req: Request) {
           for (const item of dbItems) {
             items.push({
               id: item.id,
+              food_log_id: log.id,
               food_name: item.food_name,
               estimated_weight_g: Number(item.weight_g) || 100,
               calories_kcal: Number(item.calories_kcal) || 0,
@@ -110,24 +111,46 @@ export async function GET(req: Request) {
               micros: item.micros_json || {},
             });
           }
-        } else if (log.ai_response_json?.items && Array.isArray(log.ai_response_json.items)) {
-          for (const item of log.ai_response_json.items) {
-            items.push({
-              id: item.id || `item-${Math.random()}`,
-              food_name: item.food_name,
-              estimated_weight_g: Number(item.estimated_weight_g) || 100,
-              calories_kcal: Number(item.calories_kcal) || 0,
-              time_logged: timeStr,
-              meal_slot: "Ransum Tempur",
-              macros: {
-                carbs_g: Number(item.macros?.carbs_g) || 0,
-                protein_g: Number(item.macros?.protein_g) || 0,
-                fat_g: Number(item.macros?.fat_g) || 0,
-                fiber_g: Number(item.macros?.fiber_g) || 0,
-                sugar_g: Number(item.macros?.sugar_g) || 0,
-              },
-              micros: item.micros || {},
-            });
+        } else if (log.ai_response_json?.items && Array.isArray(log.ai_response_json.items) && log.ai_response_json.items.length > 0) {
+          // If items were only in ai_response_json, backfill them into food_log_items so they get genuine UUIDs
+          const itemsToBackfill = log.ai_response_json.items.map((item: any) => ({
+            food_log_id: log.id,
+            food_name: item.food_name || "Item Makanan",
+            weight_g: Math.max(1, Number(item.weight_g || item.estimated_weight_g) || 100),
+            calories_kcal: Math.max(0, Number(item.calories_kcal) || 0),
+            carbs_g: Number(item.carbs_g || item.macros?.carbs_g) || 0,
+            protein_g: Number(item.protein_g || item.macros?.protein_g) || 0,
+            fat_g: Number(item.fat_g || item.macros?.fat_g) || 0,
+            fiber_g: Number(item.fiber_g || item.macros?.fiber_g) || 0,
+            sugar_g: Number(item.sugar_g || item.macros?.sugar_g) || 0,
+            micros_json: item.micros || {},
+          }));
+
+          const { data: insertedBackfill } = await admin
+            .from("food_log_items")
+            .insert(itemsToBackfill)
+            .select("*");
+
+          if (insertedBackfill && insertedBackfill.length > 0) {
+            for (const item of insertedBackfill) {
+              items.push({
+                id: item.id,
+                food_log_id: log.id,
+                food_name: item.food_name,
+                estimated_weight_g: Number(item.weight_g) || 100,
+                calories_kcal: Number(item.calories_kcal) || 0,
+                time_logged: timeStr,
+                meal_slot: "Ransum Tempur",
+                macros: {
+                  carbs_g: Number(item.carbs_g) || 0,
+                  protein_g: Number(item.protein_g) || 0,
+                  fat_g: Number(item.fat_g) || 0,
+                  fiber_g: Number(item.fiber_g) || 0,
+                  sugar_g: Number(item.sugar_g) || 0,
+                },
+                micros: item.micros_json || {},
+              });
+            }
           }
         }
       }
@@ -595,15 +618,190 @@ export async function DELETE(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
+    const foodName = searchParams.get("name");
+    const dateStr = searchParams.get("date");
+
+    if (!id && !foodName) {
+      return NextResponse.json({ error: "ID atau nama item wajib disertakan" }, { status: 400 });
+    }
+
+    const admin = createAdminClient();
+    const isUuid = id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    if (isUuid) {
+      // 1. Try deleting from food_log_items
+      const { data: item } = await admin
+        .from("food_log_items")
+        .select("id, food_log_id, calories_kcal, food_name")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (item) {
+        const parentLogId = item.food_log_id;
+        await admin.from("food_log_items").delete().eq("id", id);
+
+        // Check if there are remaining items in the parent food_log
+        const { data: remainingItems } = await admin
+          .from("food_log_items")
+          .select("id, calories_kcal, food_name")
+          .eq("food_log_id", parentLogId);
+
+        if (!remainingItems || remainingItems.length === 0) {
+          // If no items left, delete parent food_log completely
+          await admin.from("food_logs").delete().eq("id", parentLogId).eq("user_id", user.id);
+        } else {
+          // Update total_kcal and ai_response_json in parent log
+          const newTotal = remainingItems.reduce((sum, it) => sum + (Number(it.calories_kcal) || 0), 0);
+          const { data: parentLog } = await admin.from("food_logs").select("ai_response_json").eq("id", parentLogId).maybeSingle();
+          if (parentLog?.ai_response_json?.items) {
+            const updatedAiItems = parentLog.ai_response_json.items.filter((it: any) => it.food_name !== item.food_name);
+            await admin.from("food_logs").update({
+              total_kcal: newTotal,
+              ai_response_json: { ...parentLog.ai_response_json, items: updatedAiItems, total_calories_kcal: newTotal }
+            }).eq("id", parentLogId);
+          } else {
+            await admin.from("food_logs").update({ total_kcal: newTotal }).eq("id", parentLogId);
+          }
+        }
+
+        return NextResponse.json({ success: true, message: "Item berhasil dihapus dari database" });
+      }
+
+      // 2. If id was a food_logs id directly
+      const { data: log } = await admin
+        .from("food_logs")
+        .select("id")
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (log) {
+        await admin.from("food_logs").delete().eq("id", id).eq("user_id", user.id);
+        return NextResponse.json({ success: true, message: "Catatan makanan berhasil dihapus dari database" });
+      }
+    }
+
+    // 3. Fallback: If not UUID (e.g. legacy/local ID) or not found by UUID, try matching by food_name and date
+    if (foodName) {
+      const targetDate = dateStr || getStandardWibDate();
+      const startOfDay = `${targetDate}T00:00:00.000Z`;
+      const endOfDay = `${targetDate}T23:59:59.999Z`;
+
+      const { data: dateLogs } = await admin
+        .from("food_logs")
+        .select("id, ai_response_json")
+        .eq("user_id", user.id)
+        .or(`logged_at.gte.${startOfDay},created_at.gte.${startOfDay}`)
+        .or(`logged_at.lte.${endOfDay},created_at.lte.${endOfDay}`);
+
+      if (dateLogs && dateLogs.length > 0) {
+        for (const dLog of dateLogs) {
+          // Check food_log_items for this food_name
+          const { data: matchingItem } = await admin
+            .from("food_log_items")
+            .select("id, food_log_id")
+            .eq("food_log_id", dLog.id)
+            .ilike("food_name", foodName.trim())
+            .limit(1)
+            .maybeSingle();
+
+          if (matchingItem) {
+            await admin.from("food_log_items").delete().eq("id", matchingItem.id);
+            const { count } = await admin.from("food_log_items").select("id", { count: "exact", head: true }).eq("food_log_id", dLog.id);
+            if (count === 0) {
+              await admin.from("food_logs").delete().eq("id", dLog.id).eq("user_id", user.id);
+            }
+            return NextResponse.json({ success: true, message: "Item berhasil dihapus berdasarkan nama makanan" });
+          }
+
+          // Check ai_response_json
+          if (dLog.ai_response_json?.items) {
+            const hasItem = dLog.ai_response_json.items.some((it: any) => 
+              String(it.food_name).trim().toLowerCase() === foodName.trim().toLowerCase()
+            );
+            if (hasItem) {
+              const remaining = dLog.ai_response_json.items.filter((it: any) => 
+                String(it.food_name).trim().toLowerCase() !== foodName.trim().toLowerCase()
+              );
+              if (remaining.length === 0) {
+                await admin.from("food_logs").delete().eq("id", dLog.id).eq("user_id", user.id);
+              } else {
+                const newTotal = remaining.reduce((sum: number, it: any) => sum + (Number(it.calories_kcal) || 0), 0);
+                await admin.from("food_logs").update({
+                  total_kcal: newTotal,
+                  ai_response_json: { ...dLog.ai_response_json, items: remaining, total_calories_kcal: newTotal }
+                }).eq("id", dLog.id);
+              }
+              return NextResponse.json({ success: true, message: "Item berhasil dihapus dari catatan" });
+            }
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, message: "Item berhasil diproses" });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const supabase = createServerClient(req);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ success: true, message: "Diperbarui secara lokal (unauthenticated)" });
+    }
+
+    const body = await req.json();
+    const { id, food_name, estimated_weight_g, calories_kcal, macros, micros } = body;
     if (!id) {
       return NextResponse.json({ error: "ID item wajib disertakan" }, { status: 400 });
     }
 
-    const admin = createAdminClient();
-    await admin.from("food_log_items").delete().eq("id", id);
-    await admin.from("food_logs").delete().eq("id", id).eq("user_id", user.id);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (!isUuid) {
+      return NextResponse.json({ success: true, message: "Diperbarui secara lokal" });
+    }
 
-    return NextResponse.json({ success: true, message: "Item berhasil dihapus dari database" });
+    const admin = createAdminClient();
+    const { data: item } = await admin
+      .from("food_log_items")
+      .select("id, food_log_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (item) {
+      const weight = Math.max(1, Number(estimated_weight_g) || 100);
+      const calories = Math.max(0, Number(calories_kcal) || 0);
+
+      await admin.from("food_log_items").update({
+        food_name: food_name ? String(food_name).trim() : undefined,
+        weight_g: weight,
+        calories_kcal: calories,
+        carbs_g: Number(macros?.carbs_g) || 0,
+        protein_g: Number(macros?.protein_g) || 0,
+        fat_g: Number(macros?.fat_g) || 0,
+        fiber_g: Number(macros?.fiber_g) || 0,
+        sugar_g: Number(macros?.sugar_g) || 0,
+        micros_json: micros || {},
+      }).eq("id", id);
+
+      // Recalculate parent food_logs total_kcal
+      const { data: allItems } = await admin
+        .from("food_log_items")
+        .select("calories_kcal")
+        .eq("food_log_id", item.food_log_id);
+
+      if (allItems) {
+        const totalKcal = allItems.reduce((acc, it) => acc + (Number(it.calories_kcal) || 0), 0);
+        await admin.from("food_logs").update({ total_kcal: totalKcal }).eq("id", item.food_log_id);
+      }
+
+      return NextResponse.json({ success: true, message: "Item berhasil diperbarui di database" });
+    }
+
+    return NextResponse.json({ success: true, message: "Item diperbarui" });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

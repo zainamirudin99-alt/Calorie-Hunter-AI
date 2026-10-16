@@ -14,9 +14,7 @@ import {
   Zap, 
   CheckCircle2, 
   AlertCircle, 
-  Layers, 
   Flame, 
-  Shield, 
   Clock,
   ArrowRight,
   Sparkles,
@@ -64,6 +62,7 @@ export interface NutritionEntry {
 
 interface LoggedFoodItem {
   id: string;
+  food_log_id?: string;
   food_name: string;
   estimated_weight_g: number;
   calories_kcal: number;
@@ -80,6 +79,17 @@ interface LoggedFoodItem {
     sodium_mg?: number;
     potassium_mg?: number;
     vitamin_c_mg?: number;
+  };
+  base_per_100g?: {
+    calories: number;
+    carbs: number;
+    protein: number;
+    fat: number;
+    fiber?: number;
+    sugar?: number;
+    sodium?: number;
+    potassium?: number;
+    vitamin_c?: number;
   };
 }
 
@@ -890,32 +900,33 @@ export default function TrackingMakananPage() {
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         console.warn("[scanner] Server save error response:", errData.error);
+        const currentTime = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
+        const newItems: LoggedFoodItem[] = editablePreviewItems.map((item: any, idx: number) => ({
+          id: "log-" + Date.now() + "-" + idx,
+          food_name: item.food_name,
+          estimated_weight_g: item.estimated_weight_g || 150,
+          calories_kcal: item.calories_kcal || 200,
+          time_logged: currentTime,
+          meal_slot: "Ransum Tempur",
+          macros: {
+            carbs_g: item.macros?.carbs_g || 0,
+            protein_g: item.macros?.protein_g || 0,
+            fat_g: item.macros?.fat_g || 0,
+            fiber_g: item.macros?.fiber_g || 0,
+            sugar_g: item.macros?.sugar_g || 0,
+          },
+          micros: item.micros || {},
+        }));
+
+        const updated = {
+          ...logsByDate,
+          [selectedDate]: [...(logsByDate[selectedDate] || []), ...newItems],
+        };
+        persistLogs(updated);
+      } else {
+        await syncDateLogs(true);
       }
 
-      const currentTime = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
-      const newItems: LoggedFoodItem[] = editablePreviewItems.map((item: any, idx: number) => ({
-        id: "log-" + Date.now() + "-" + idx,
-        food_name: item.food_name,
-        estimated_weight_g: item.estimated_weight_g || 150,
-        calories_kcal: item.calories_kcal || 200,
-        time_logged: currentTime,
-        meal_slot: "Ransum Tempur",
-        macros: {
-          carbs_g: item.macros?.carbs_g || 0,
-          protein_g: item.macros?.protein_g || 0,
-          fat_g: item.macros?.fat_g || 0,
-          fiber_g: item.macros?.fiber_g || 0,
-          sugar_g: item.macros?.sugar_g || 0,
-        },
-        micros: item.micros || {},
-      }));
-
-      const updated = {
-        ...logsByDate,
-        [selectedDate]: [...(logsByDate[selectedDate] || []), ...newItems],
-      };
-
-      persistLogs(updated);
       setAnalysisResult(null);
       setEditablePreviewItems([]);
       setSelectedFile(null);
@@ -924,7 +935,7 @@ export default function TrackingMakananPage() {
       setPhotoHint("");
       setActionFeedback({
         type: "success",
-        msg: `Berhasil menyimpan ${newItems.length} item ke catatan ${formatIndonesianDate(selectedDate)}!`,
+        msg: `Berhasil menyimpan ${editablePreviewItems.length} item ke catatan ${formatIndonesianDate(selectedDate)}!`,
       });
     } catch {
       // Still persist locally even if network fails
@@ -965,26 +976,154 @@ export default function TrackingMakananPage() {
     }
   };
 
-  // Edit item handler
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Helper to open edit modal and calculate base per 100g
+  const openEditModal = (item: LoggedFoodItem) => {
+    const currentW = Math.max(1, Number(item.estimated_weight_g) || 100);
+    const ratio100 = 100 / currentW;
+    const base_per_100g = item.base_per_100g || {
+      calories: (Number(item.calories_kcal) || 0) * ratio100,
+      carbs: (Number(item.macros?.carbs_g) || 0) * ratio100,
+      protein: (Number(item.macros?.protein_g) || 0) * ratio100,
+      fat: (Number(item.macros?.fat_g) || 0) * ratio100,
+      fiber: (Number(item.macros?.fiber_g) || 0) * ratio100,
+      sugar: (Number(item.macros?.sugar_g) || 0) * ratio100,
+      sodium: (Number(item.micros?.sodium_mg) || 0) * ratio100,
+      potassium: (Number(item.micros?.potassium_mg) || 0) * ratio100,
+      vitamin_c: (Number(item.micros?.vitamin_c_mg) || 0) * ratio100,
+    };
+
+    setEditingItem({
+      ...item,
+      base_per_100g,
+    });
+  };
+
+  // Adjust weight and recalculate macros/micros in real-time
+  const handleEditWeightChange = (newVal: string | number) => {
+    if (!editingItem) return;
+    const numVal = Number(newVal);
+    const safeWeight = isNaN(numVal) || numVal <= 0 ? 0 : numVal;
+    const multiplier = safeWeight / 100;
+    const base = editingItem.base_per_100g || {
+      calories: 150,
+      carbs: 15,
+      protein: 10,
+      fat: 5,
+      fiber: 1,
+      sugar: 1,
+      sodium: 100,
+      potassium: 100,
+      vitamin_c: 0,
+    };
+
+    setEditingItem({
+      ...editingItem,
+      estimated_weight_g: newVal === "" ? 0 : numVal,
+      calories_kcal: Math.round(base.calories * multiplier),
+      macros: {
+        carbs_g: Number((base.carbs * multiplier).toFixed(1)),
+        protein_g: Number((base.protein * multiplier).toFixed(1)),
+        fat_g: Number((base.fat * multiplier).toFixed(1)),
+        fiber_g: Number(((base.fiber || 0) * multiplier).toFixed(1)),
+        sugar_g: Number(((base.sugar || 0) * multiplier).toFixed(1)),
+      },
+      micros: {
+        sodium_mg: Math.round((base.sodium || 0) * multiplier),
+        potassium_mg: Math.round((base.potassium || 0) * multiplier),
+        vitamin_c_mg: Math.round((base.vitamin_c || 0) * multiplier),
+      },
+    });
+  };
+
+  // Step or set exact weight preset
+  const adjustEditWeight = (deltaOrExact: number, isExact = false) => {
+    if (!editingItem) return;
+    const currentW = Math.max(1, Number(editingItem.estimated_weight_g) || 100);
+    const targetW = isExact ? deltaOrExact : Math.max(10, currentW + deltaOrExact);
+    handleEditWeightChange(targetW);
+  };
+
+  // Fine-tuning individual macro or calorie manually
+  const handleEditFieldChange = (field: string, val: any) => {
+    if (!editingItem) return;
+    const curW = Math.max(1, Number(editingItem.estimated_weight_g) || 100);
+    const ratio100 = 100 / curW;
+    const base = editingItem.base_per_100g || {
+      calories: (editingItem.calories_kcal * ratio100) || 0,
+      carbs: (editingItem.macros.carbs_g * ratio100) || 0,
+      protein: (editingItem.macros.protein_g * ratio100) || 0,
+      fat: (editingItem.macros.fat_g * ratio100) || 0,
+      fiber: ((editingItem.macros.fiber_g || 0) * ratio100) || 0,
+      sugar: ((editingItem.macros.sugar_g || 0) * ratio100) || 0,
+    };
+
+    if (field === "food_name") {
+      setEditingItem({ ...editingItem, food_name: val });
+    } else if (field === "calories_kcal") {
+      const num = Math.max(0, Number(val) || 0);
+      setEditingItem({
+        ...editingItem,
+        calories_kcal: num,
+        base_per_100g: { ...base, calories: num * ratio100 },
+      });
+    } else if (field.startsWith("macros.")) {
+      const macroKey = field.split(".")[1] as keyof typeof editingItem.macros;
+      const num = Math.max(0, Number(val) || 0);
+      const newMacros = { ...editingItem.macros, [macroKey]: num };
+      const baseKey = macroKey.replace("_g", "") as keyof typeof base;
+      setEditingItem({
+        ...editingItem,
+        macros: newMacros,
+        base_per_100g: { ...base, [baseKey]: num * ratio100 },
+      });
+    }
+  };
+
+  // Edit item save handler (with cloud persistence)
+  const handleSaveEdit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!editingItem) return;
 
+    const itemToSave = { ...editingItem };
     const dayItems = logsByDate[selectedDate] || [];
-    const updatedItems = dayItems.map(item => item.id === editingItem.id ? editingItem : item);
+    const updatedItems = dayItems.map(item => item.id === itemToSave.id ? itemToSave : item);
     const updated = { ...logsByDate, [selectedDate]: updatedItems };
 
     persistLogs(updated);
     setEditingItem(null);
+
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      await fetch("/api/food-log", {
+        method: "PATCH",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({
+          id: itemToSave.id,
+          food_name: itemToSave.food_name,
+          estimated_weight_g: itemToSave.estimated_weight_g,
+          calories_kcal: itemToSave.calories_kcal,
+          macros: itemToSave.macros,
+          micros: itemToSave.micros,
+        }),
+      });
+    } catch (err: any) {
+      console.warn("[scanner] Update cloud logs failed:", err.message);
+    }
+
     setActionFeedback({
       type: "success",
-      msg: "Perubahan item makanan berhasil diperbarui!",
+      msg: `Catatan "${itemToSave.food_name}" (${itemToSave.estimated_weight_g}g) berhasil diperbarui!`,
     });
   };
 
-  // Delete item handler
+  // Delete item handler (with cloud persistence and fallback cleanup)
   const handleDeleteItem = async (id: string) => {
     const dayItems = logsByDate[selectedDate] || [];
+    const itemToDelete = dayItems.find(item => item.id === id);
     const updatedItems = dayItems.filter(item => item.id !== id);
     const updated = { ...logsByDate, [selectedDate]: updatedItems };
 
@@ -992,17 +1131,22 @@ export default function TrackingMakananPage() {
 
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("chai_auth_token") : null;
-      if (token) {
-        await fetch(`/api/food-log?id=${encodeURIComponent(id)}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-    } catch {}
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const foodNameQuery = itemToDelete?.food_name ? `&name=${encodeURIComponent(itemToDelete.food_name)}` : "";
+      await fetch(`/api/food-log?id=${encodeURIComponent(id)}${foodNameQuery}&date=${encodeURIComponent(selectedDate)}`, {
+        method: "DELETE",
+        headers,
+        credentials: "include",
+      });
+    } catch (err: any) {
+      console.warn("[scanner] Delete cloud item failed:", err.message);
+    }
 
     setActionFeedback({
       type: "success",
-      msg: "Item makanan berhasil dihapus dari tanggal ini.",
+      msg: `Item "${itemToDelete?.food_name || "makanan"}" berhasil dihapus.`,
     });
   };
 
@@ -1901,7 +2045,7 @@ export default function TrackingMakananPage() {
                       <div className="flex items-center justify-end gap-2 mt-2.5 pt-2 border-t hud-border text-[11px]">
                         <button
                           type="button"
-                          onClick={() => setEditingItem({ ...item })}
+                          onClick={() => openEditModal(item)}
                           className="px-2 py-1 rounded hud-card border hud-border hover:border-primary flex items-center gap-1 text-slate-300 hover:text-white"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -1940,114 +2084,286 @@ export default function TrackingMakananPage() {
         {/* MODAL EDIT ITEM MAKANAN DI HARI SEBELUMNYA / HARI INI                     */}
         {/* ========================================================================= */}
         {editingItem && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="w-full max-w-md hud-card border-2 border-primary rounded-t-2xl sm:rounded-lg p-5 sm:p-6 shadow-2xl space-y-4 font-mono text-xs relative max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center justify-between border-b hud-border pb-2">
-                <span className="font-bold text-sm hud-hero-text">EDIT CATATAN MAKANAN</span>
-                <button
-                  type="button"
-                  onClick={() => setEditingItem(null)}
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-outline hover:text-white cursor-pointer"
-                  title="Tutup Modal"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="w-full max-w-lg hud-card border-2 border-primary rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col max-h-[92dvh] sm:max-h-[85vh] overflow-hidden font-mono text-xs animate-in fade-in slide-in-from-bottom duration-200">
+              
+              {/* STICKY HEADER */}
+              <div className="flex items-center justify-between px-4 py-3 border-b hud-border bg-slate-950/90 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="p-1 rounded bg-primary/20 text-primary">
+                    <Scale className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs sm:text-sm hud-hero-text uppercase tracking-wider block">
+                      EDIT GRAMASI & NUTRISI
+                    </span>
+                    <span className="text-[10px] text-outline truncate block max-w-[180px] sm:max-w-xs">
+                      {editingItem.food_name}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Quick Selesai button on mobile top bar for 1-tap finish */}
+                  <button
+                    type="button"
+                    onClick={() => handleSaveEdit()}
+                    className="sm:hidden px-3 py-1.5 rounded hud-hero-bg text-black font-bold text-xs flex items-center gap-1 shadow cursor-pointer active:scale-95"
+                    title="Simpan Perubahan & Selesai"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Selesai</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditingItem(null)}
+                    className="min-h-[36px] min-w-[36px] flex items-center justify-center text-outline hover:text-white rounded hud-card border hud-border hover:border-slate-500 cursor-pointer"
+                    title="Batal & Tutup"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
-              <form onSubmit={handleSaveEdit} className="space-y-3">
+              {/* SCROLLABLE FORM BODY */}
+              <form onSubmit={handleSaveEdit} className="flex-1 overflow-y-auto p-4 space-y-4">
+                
+                {/* 1. Nama Makanan Input */}
                 <div>
-                  <span className="text-outline block mb-1">Nama Makanan:</span>
+                  <label className="text-outline text-[11px] font-bold block mb-1">
+                    Nama Makanan:
+                  </label>
                   <input
                     type="text"
                     required
                     value={editingItem.food_name}
-                    onChange={(e) => setEditingItem({ ...editingItem, food_name: e.target.value })}
-                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
+                    onChange={(e) => handleEditFieldChange("food_name", e.target.value)}
+                    className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text text-sm sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-outline block mb-1">Berat (Gram):</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={editingItem.estimated_weight_g}
-                      onChange={(e) => setEditingItem({ ...editingItem, estimated_weight_g: Number(e.target.value) })}
-                      className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
-                    />
+                {/* 2. BERAT & GRAMASI CONTROLLER (Highlighted & Interactive) */}
+                <div className="p-3.5 rounded-lg hud-card-inner border-2 border-primary/40 bg-gradient-to-b from-primary/10 to-transparent space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs hud-hero-text flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-primary" />
+                      <span>BERAT GRAMASI MAKANAN</span>
+                    </span>
+                    <span className="text-[10px] text-outline">
+                      Makro & mikro otomatis sinkron
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-outline block mb-1">Total Kalori (kcal):</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editingItem.calories_kcal}
-                      onChange={(e) => setEditingItem({ ...editingItem, calories_kcal: Number(e.target.value) })}
-                      className="w-full px-3 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
-                    />
+
+                  {/* Weight Input with Steppers */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => adjustEditWeight(-50)}
+                      className="min-h-[44px] min-w-[44px] px-2 rounded hud-card border hud-border hover:border-primary text-slate-200 font-bold text-xs flex items-center justify-center cursor-pointer active:scale-95"
+                      title="Kurangi 50 gram"
+                    >
+                      -50g
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustEditWeight(-10)}
+                      className="min-h-[44px] min-w-[40px] px-2 rounded hud-card border hud-border hover:border-primary text-slate-200 font-bold text-xs flex items-center justify-center cursor-pointer active:scale-95"
+                      title="Kurangi 10 gram"
+                    >
+                      -10g
+                    </button>
+
+                    <div className="relative flex-1">
+                      <input
+                        type="number"
+                        min={1}
+                        value={editingItem.estimated_weight_g}
+                        onChange={(e) => handleEditWeightChange(e.target.value)}
+                        className="w-full px-3 py-2 rounded hud-card border-2 border-primary text-center font-mono font-bold text-lg sm:text-base hud-text focus:outline-none focus:ring-1 focus:ring-primary min-h-[44px]"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-outline pointer-events-none">
+                        gram
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => adjustEditWeight(+10)}
+                      className="min-h-[44px] min-w-[40px] px-2 rounded hud-card border hud-border hover:border-primary text-slate-200 font-bold text-xs flex items-center justify-center cursor-pointer active:scale-95"
+                      title="Tambah 10 gram"
+                    >
+                      +10g
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustEditWeight(+50)}
+                      className="min-h-[44px] min-w-[44px] px-2 rounded hud-card border hud-border hover:border-primary text-slate-200 font-bold text-xs flex items-center justify-center cursor-pointer active:scale-95"
+                      title="Tambah 50 gram"
+                    >
+                      +50g
+                    </button>
+                  </div>
+
+                  {/* Quick Preset Gram Chips */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    <span className="text-[10px] text-outline mr-1">Preset:</span>
+                    {[50, 100, 150, 200, 250, 300].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => adjustEditWeight(preset, true)}
+                        className={`px-2.5 py-1 rounded text-[11px] font-mono transition-all cursor-pointer ${
+                          Number(editingItem.estimated_weight_g) === preset
+                            ? "hud-hero-bg text-black font-bold shadow"
+                            : "hud-card border hud-border text-slate-300 hover:border-primary"
+                        }`}
+                      >
+                        {preset}g
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <span className="text-outline block mb-1">Protein (g):</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editingItem.macros.protein_g}
-                      onChange={(e) => setEditingItem({ 
-                        ...editingItem, 
-                        macros: { ...editingItem.macros, protein_g: Number(e.target.value) } 
-                      })}
-                      className="w-full px-2 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
-                    />
+                {/* 3. LIVE RECALCULATED NUTRITION OVERVIEW */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-outline text-[11px] font-bold">
+                      HASIL KALKULASI NUTRISI ({editingItem.estimated_weight_g || 0}g):
+                    </span>
+                    <span className="text-xs font-bold hud-hero-text">
+                      {editingItem.calories_kcal || 0} kcal
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-outline block mb-1">Karbo (g):</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editingItem.macros.carbs_g}
-                      onChange={(e) => setEditingItem({ 
-                        ...editingItem, 
-                        macros: { ...editingItem.macros, carbs_g: Number(e.target.value) } 
-                      })}
-                      className="w-full px-2 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
-                    />
+
+                  {/* 4 Macros Cards */}
+                  <div className="grid grid-cols-4 gap-2 text-center text-[10px]">
+                    <div className="p-2 rounded hud-card border hud-border">
+                      <span className="text-outline block mb-0.5">Karbo</span>
+                      <span className="hud-sub-text font-bold text-xs block">
+                        {editingItem.macros.carbs_g || 0}g
+                      </span>
+                    </div>
+                    <div className="p-2 rounded hud-card border hud-border">
+                      <span className="text-outline block mb-0.5">Protein</span>
+                      <span className="hud-beam-text font-bold text-xs block">
+                        {editingItem.macros.protein_g || 0}g
+                      </span>
+                    </div>
+                    <div className="p-2 rounded hud-card border hud-border">
+                      <span className="text-outline block mb-0.5">Lemak</span>
+                      <span className="hud-hero-text font-bold text-xs block">
+                        {editingItem.macros.fat_g || 0}g
+                      </span>
+                    </div>
+                    <div className="p-2 rounded hud-card border hud-border">
+                      <span className="text-outline block mb-0.5">Serat</span>
+                      <span className="hud-text font-bold text-xs block">
+                        {editingItem.macros.fiber_g || 0}g
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-outline block mb-1">Lemak (g):</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editingItem.macros.fat_g}
-                      onChange={(e) => setEditingItem({ 
-                        ...editingItem, 
-                        macros: { ...editingItem.macros, fat_g: Number(e.target.value) } 
-                      })}
-                      className="w-full px-2 py-2 rounded hud-card-inner border hud-border hud-text text-base sm:text-xs focus:outline-none focus:border-primary min-h-[44px]"
-                    />
-                  </div>
+
+                  {/* Micros summary row */}
+                  {editingItem.micros && (
+                    <div className="p-2 rounded hud-card-inner border hud-border flex items-center justify-around text-[10px] text-outline">
+                      <span>Sodium: <strong className="text-slate-200">{editingItem.micros.sodium_mg || 0}mg</strong></span>
+                      <span>Kalium: <strong className="text-slate-200">{editingItem.micros.potassium_mg || 0}mg</strong></span>
+                      <span>Vit C: <strong className="text-slate-200">{editingItem.micros.vitamin_c_mg || 0}mg</strong></span>
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-end gap-2 pt-3 border-t hud-border">
-                  <button
-                    type="button"
-                    onClick={() => setEditingItem(null)}
-                    className="min-h-[44px] px-4 py-2 rounded hud-card border hud-border hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="min-h-[44px] px-5 py-2 rounded hud-hero-bg font-bold text-black dark:text-black flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Simpan Perubahan</span>
-                  </button>
-                </div>
+                {/* 4. FINE-TUNING INPUTS (Optional manual override) */}
+                <details className="group border hud-border rounded p-2.5 hud-card text-[11px]">
+                  <summary className="cursor-pointer font-bold hud-text flex items-center justify-between text-outline hover:text-white select-none">
+                    <span>Atur Manual Kalori & Makro Detail (Opsional)</span>
+                    <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+                  </summary>
+                  
+                  <div className="mt-3 space-y-3 pt-2 border-t hud-border">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-outline block mb-1">Total Kalori (kcal):</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={editingItem.calories_kcal}
+                          onChange={(e) => handleEditFieldChange("calories_kcal", e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded hud-card-inner border hud-border hud-hero-text font-bold focus:outline-none focus:border-primary min-h-[40px]"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-outline block mb-1">Protein (g):</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={editingItem.macros.protein_g}
+                          onChange={(e) => handleEditFieldChange("macros.protein_g", e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded hud-card-inner border hud-border hud-beam-text font-bold focus:outline-none focus:border-primary min-h-[40px]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <span className="text-outline block mb-1">Karbo (g):</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={editingItem.macros.carbs_g}
+                          onChange={(e) => handleEditFieldChange("macros.carbs_g", e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded hud-card-inner border hud-border hud-sub-text font-bold focus:outline-none focus:border-primary min-h-[40px]"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-outline block mb-1">Lemak (g):</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={editingItem.macros.fat_g}
+                          onChange={(e) => handleEditFieldChange("macros.fat_g", e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded hud-card-inner border hud-border hud-hero-text font-bold focus:outline-none focus:border-primary min-h-[40px]"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-outline block mb-1">Serat (g):</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={editingItem.macros.fiber_g || 0}
+                          onChange={(e) => handleEditFieldChange("macros.fiber_g", e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded hud-card-inner border hud-border hud-text font-bold focus:outline-none focus:border-primary min-h-[40px]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </details>
               </form>
+
+              {/* STICKY FOOTER - ALWAYS ACCESSIBLE AT BOTTOM */}
+              <div className="p-3 sm:p-4 border-t hud-border bg-slate-950/95 backdrop-blur-md shrink-0 flex items-center justify-between gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="flex-1 sm:flex-none min-h-[44px] px-4 py-2 rounded hud-card border hud-border hover:bg-slate-800 transition-colors text-center cursor-pointer text-slate-300 active:scale-95"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveEdit()}
+                  className="flex-1 sm:flex-none min-h-[44px] px-6 py-2 rounded hud-hero-bg font-bold text-black dark:text-black flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 hover:opacity-95"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>SELESAI & SIMPAN</span>
+                </button>
+              </div>
+
             </div>
           </div>
         )}
